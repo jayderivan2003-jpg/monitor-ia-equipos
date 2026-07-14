@@ -1,0 +1,51 @@
+ID_PC,Fecha_Hora,Uso_CPU_Porcentaje,Uso_RAM_Porcentaje,CPU_Normalizadontajercentaje,Ticket_Usuario,Temperatura_CPU_C,Uso_Disco_Porcentaje,Usuario,Modelo,Serial
+1,11/18/2022,26.41,24.35,52.82,Se recalienta la bateria,81.87,36.3,kkeld0,Latitude 5420,HIJ456
+2,10/22/2022,68.44,75.2,48.66,Se recalienta la bateria,5.78,17.53,lgurrado1,TravelMate P2,IJK123
+3,8/1/2022,79.34,93.5,18.13,Error de conexion Zscaler,37.48,67.38,idumphy2,ExpertBook B1,IJK901
+4,4/6/2022,15.96,42.74,25.86,El equipo esta muy lento,37.71,76.5,cstidston3,TravelMate P2,IJK123
+5,10/28/2022,80.08,97.93,5.28,No reconoce memoria RAM,7.35,6.4,hperillo4,MacBook Pro,TUV456
+6,8/5/2022,16.95,11.39,96.8,No enciende,86.84,34.55,hgrove5,ExpertBook B1,JKL012
+7,7/18/2022,41.5,24.72,60.57,El equipo esta muy lento,26.74,31.98,csimanenko6,TravelMate P2,FGH890
+8,9/18/2022,58.32,36.75,28.83,Error de conexion Zscaler,48.07,22.5,dfrake7,ExpertBook B1,GHI789
+9,8/20/2022,33.87,3.04,82.82,Error de conexion Zscaler,91.83,35.96,rpappi8,ExpertBook B1,GHI567
+10,4/2/2022,27.21,4.2,42.9,Se recalienta la bateria,78.17,52.64,sdadswell9,EliteBook 840,LMN456
+11,7/14/2022,58.23,72.4,97.56,Se recalienta la bateria,41.67,56.86,mmcelhargya,MacBook Pro,BCD678
+12,5/11/2022,94.08,19.06,41.83,Laptop congelada,79.15,77.05,cwebberb,ExpertBook B1,XYZ678
+13,4/16/2022,40.96,99.24,9.4,Laptop congelada,78.75,60.4,lratterc,ThinkPad L14,JKL012
+14,4/24/2022,69.05,83.09,50.38,No enciende,93.27,98.97,lallixd,ThinkPad L14,DEF234
+15,8/1/2022,62.15,26.44,95.5,Se recalienta la bateria,2.34,87.55,jgreene,Latitude 5420,ZAB012
+16,4/5/2022,71.21,11.48,12.5,Error de conexion Zscaler,5.36,61.86,stesaurof,TravelMate P2,HIJ234
+17,10/9/2022,6.36,98.83,40.11,No enciende,5.03,24.24,astumpg,ExpertBook B1,WXY789
+18,3/9/2022,45.65,31.16,53.56,Error de conexion Zscaler,53.67,36.36,gmityashinh,MacBook Pro,YZA567
+19,6/7/2022,35.93,61.18,26.28,No enciende,5.91,16.76,kcuvleyi,Latitude 5420,PQR456
+20,4/14/2022,15.42,19.06,9.35,Error de conexion Zscaler,56.16,54.81,lcarradicej,MacBook Pro,QRS345
+21,4/9/2022,60.21,66.98,22.17,Error de conexion Zscaler,33.35,70.73,jtwelvek,ThinkPad L14,IJK123
+22,5/2/2022,97.46,43.89,26.92,Pantalla azul,7.01,37.17,kcubleyl,EliteBook 840,ABC123
+23,1/12/2022,98.18,20.4,23.76,No reconoce memoria RAM,15.68,96.38,ptimmesm,Surface Laptop 5,GHI567
+24,3/29/2022,39.2,5.73,58.53,Pantalla azul,38.2,14.91,nstolbergern,MacBook Pro,TUV456
+25,8/16/2022,28.58,85.02,54.98,No reconoce memoria RAM,75.19,77.5,mspenceo,ThinkPad L14,FGH678
+26,6/4/2022,28.42,88.8,32.37,El equipo esta muy lento,62.77,87.42,jchatersp,MacBook Pro,HIJ234
+27,12/16/2022,36.84,25.37,19.13,No enciende,61.57,43.48,csenterq,ThinkPad L14,LMN456
+28,1/12/2022,6.26,71.27,12.11,Pantalla azul,49.26,38.36,okingabyr,MacBook Pro,HIJ234
+29,4/6/2022,92.38,17.14,75.19,No reconoce memoria RAM,52.27,65.75,hpypers,ThinkPad L14,STU901
+30,12/6/2022,15.59,8.86,43.37,Falla de disco duro,97.49,55.89,rscholardt,Surface Laptop 5,CDE345
+31,1/2/2022,84.46,54.63,24.38,No reconoce memoria RAM,65.86,50.32,ggiroldou,EliteBook 840,XYZ678
+32,8/16/2022,10.97,4.5,79.97,Se recalienta la bateria,70.36,13.13,hseathwrightv,Latitude 5420,UVW345
+33,4/30/2022,11.88,52.7,26.72,No reconoce memoria RAM,47.37,38.22,pweblinw,ThinkPad L14,ABC901
+34,7/2/2022,91.0,57.61,76.94,Pantalla azul,43.42,90.54,tcortnayx,TravelMate P2,BCD678
+35,11/1/2022,3.98,47.3,4.08,Pantalla azul,65.85,36.69,clowseleyy,ThinkPad L14,YZA567
+36,5/17/2022,29.92,81.35,36.73,Se recalienta la bateria,97.96,50.32,dranklinz,MacBook Pro,IJK123
+37,3/2/2022,81.27,99.51,31.77,Error de conexion Zscaler,54.3,90.51,gkellart10,EliteBook 840,BCD678
+38,6/28/2022,68.27,31.01,21.76,Pantalla azul,15.32,59.98,wdewerson11,MacBook Pro,EFG901
+39,3/25/2022,64.41,67.06,66.31,Error de conexion Zscaler,81.32,30.74,afebry12,MacBook Pro,MNO345
+40,11/25/2022,45.8,97.93,25.05,No enciende,74.15,19.41,lkay13,EliteBook 840,FGH678
+41,6/26/2022,7.98,5.09,83.68,No enciende,28.63,91.18,kdzenisenka14,TravelMate P2,EFG123
+42,6/17/2022,36.08,9.1,75.02,Error de conexion Zscaler,74.91,80.44,lneylan15,MacBook Pro,VWX012
+43,1/15/2022,20.41,51.48,70.54,Pantalla azul,33.41,96.88,danning16,Surface Laptop 5,YZA345
+44,7/18/2022,56.7,99.33,79.83,No reconoce memoria RAM,4.9,15.22,bsilburn17,EliteBook 840,OPQ567
+45,12/11/2022,54.64,98.8,20.69,Error de conexion Zscaler,7.11,35.65,tclarricoates18,MacBook Pro,FGH890
+46,6/17/2022,74.32,25.34,28.71,El equipo esta muy lento,92.71,74.95,jhuddy19,MacBook Pro,OPQ789
+47,9/24/2022,62.83,99.3,66.72,Pantalla azul,13.89,82.62,dpetrashov1a,EliteBook 840,KLM789
+48,11/18/2022,63.92,44.66,96.43,Pantalla azul,56.73,1.69,gsines1b,EliteBook 840,EFG123
+49,11/21/2022,16.52,58.64,24.67,Error de conexion Zscaler,64.27,79.71,mespinay1c,ThinkPad L14,VWX234
+50,7/20/2022,70.71,99.02,34.85,No enciende,6.3,41.97,memnoney1d,Surface Laptop 5,STU901
