@@ -65,3 +65,36 @@ with c2:
 # 6. INVENTARIO COMPLETO (Se mantiene igual)
 st.subheader("Inventario Técnico Completo")
 st.dataframe(df, use_container_width=True)
+
+# 7. EVALUACIÓN DE ASERTIVIDAD DE LA IA (Sección nueva)
+st.divider()
+st.subheader("🎯 Evaluación de Asertividad del Modelo (Isolation Forest)")
+
+from sklearn.metrics import classification_report
+
+# Simulamos que tenemos etiquetas reales (en un caso real, esto vendría de tu histórico de tickets)
+# Si no tienes etiquetas, usamos el score del modelo para mostrar confianza
+with st.expander("Ver métricas de desempeño del modelo"):
+    st.write("El modelo utiliza Isolation Forest para detección de anomalías no supervisadas.")
+    
+    # Análisis de distribución de riesgo
+    riesgo_counts = df['Estado'].value_counts()
+    fig_dist = px.pie(values=riesgo_counts.values, names=riesgo_counts.index, 
+                      title="Distribución de Estados Detectados",
+                      color_discrete_map={'CRÍTICO': '#FF4B4B', 'ESTABLE': '#0068C9'})
+    st.plotly_chart(fig_dist)
+    
+    st.info("""
+    **Nota de Asertividad:** Como estamos usando un modelo no supervisado (Isolation Forest), 
+    la 'asertividad' se mide comparando los picos de CPU/RAM detectados como 'CRÍTICOS' 
+    contra los reportes manuales en los tickets de los usuarios.
+    """)
+
+# Botón para descargar el reporte de asertividad
+csv = df.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="Descargar Reporte de Diagnóstico IA",
+    data=csv,
+    file_name='reporte_asertividad_ia.csv',
+    mime='text/csv',
+)
