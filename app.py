@@ -3,6 +3,9 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 import plotly.express as px
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
 
 st.set_page_config(layout="wide", page_title="Monitor IA - Gestión Avanzada")
 
@@ -15,7 +18,7 @@ def cargar_datos():
 
 df = cargar_datos()
 
-# 2. IA: Detección de Anomalías
+# 2. IA: Detección de Anomalías (Isolation Forest)
 features = ['Uso_CPU_Porcentaje', 'Uso_RAM_Porcentaje', 'CPU_Normalizadontajercentaje']
 model = IsolationForest(contamination=0.1, random_state=42)
 df['Riesgo_IA'] = model.fit_predict(df[features])
@@ -33,68 +36,44 @@ col_b.metric("Equipos en Riesgo", df[df['Estado'] == 'CRÍTICO'].shape[0])
 col_c.metric("Promedio CPU", f"{df['Uso_CPU_Porcentaje'].mean():.1f}%")
 col_d.metric("Promedio RAM", f"{df['Uso_RAM_Porcentaje'].mean():.1f}%")
 
-# 5. DASHBOARD PRINCIPAL (Gráficos y Detalles)
+# 5. DASHBOARD PRINCIPAL
 c1, c2 = st.columns([1, 2])
 
 with c1:
     st.subheader(f"Detalles: {pc_seleccionado}")
     st.write(pc_data.T)
-    
-    # Lógica de Diagnóstico de Picos (AÑADIDO)
     st.subheader("⚠️ Diagnóstico de Picos")
     cpu_val = pc_data['Uso_CPU_Porcentaje'].values[0]
-    if cpu_val > 80:
-        st.error(f"¡ALERTA: Pico de CPU detectado! ({cpu_val}%)")
-    elif cpu_val > 60:
-        st.warning(f"Atención: CPU elevado ({cpu_val}%)")
-    else:
-        st.success(f"CPU Estable ({cpu_val}%)")
+    if cpu_val > 80: st.error(f"¡ALERTA: Pico de CPU detectado! ({cpu_val}%)")
+    elif cpu_val > 60: st.warning(f"Atención: CPU elevado ({cpu_val}%)")
+    else: st.success(f"CPU Estable ({cpu_val}%)")
 
 with c2:
     st.subheader("Mapa de Riesgo (IA)")
     fig = px.scatter(df, x="Uso_CPU_Porcentaje", y="Uso_RAM_Porcentaje", color="Estado",
                      size='Uso_RAM_Porcentaje', hover_data=['ID_PC', 'Ticket_Usuario'],
                      color_discrete_map={'CRÍTICO': '#FF4B4B', 'ESTABLE': '#0068C9'})
-    
-    # Resaltar equipo seleccionado
     fig.add_trace(go.Scatter(x=pc_data['Uso_CPU_Porcentaje'], y=pc_data['Uso_RAM_Porcentaje'],
                              mode='markers', marker=dict(size=18, color='yellow', line=dict(width=2, color='black')),
                              name="Seleccionado"))
     st.plotly_chart(fig, use_container_width=True)
 
-# 6. INVENTARIO COMPLETO (Se mantiene igual)
+# 6. EVALUACIÓN DE ASERTIVIDAD (NUEVO)
+st.divider()
+st.subheader("📊 Reporte de Asertividad del Modelo (IA)")
+st.write("Visualización de la Matriz de Confusión para validar el rendimiento predictivo:")
+
+# Asumiendo que en tu CSV tienes una columna 'Clase_Real' (ej: 'ESTABLE', 'CRÍTICO')
+if 'Clase_Real' in df.columns:
+    cm = confusion_matrix(df['Clase_Real'], df['Estado'])
+    fig_cm, ax = plt.subplots(figsize=(6, 4))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax, 
+                xticklabels=['CRÍTICO', 'ESTABLE'], yticklabels=['CRÍTICO', 'ESTABLE'])
+    plt.xlabel('Predicción IA')
+    plt.ylabel('Realidad')
+    st.pyplot(fig_cm)
+else:
+    st.warning("Para ver la matriz de asertividad, agrega la columna 'Clase_Real' a tu CSV.")
+
 st.subheader("Inventario Técnico Completo")
 st.dataframe(df, use_container_width=True)
-
-# 7. EVALUACIÓN DE ASERTIVIDAD DE LA IA (Sección nueva)
-st.divider()
-st.subheader("🎯 Evaluación de Asertividad del Modelo (Isolation Forest)")
-
-from sklearn.metrics import classification_report
-
-# Simulamos que tenemos etiquetas reales (en un caso real, esto vendría de tu histórico de tickets)
-# Si no tienes etiquetas, usamos el score del modelo para mostrar confianza
-with st.expander("Ver métricas de desempeño del modelo"):
-    st.write("El modelo utiliza Isolation Forest para detección de anomalías no supervisadas.")
-    
-    # Análisis de distribución de riesgo
-    riesgo_counts = df['Estado'].value_counts()
-    fig_dist = px.pie(values=riesgo_counts.values, names=riesgo_counts.index, 
-                      title="Distribución de Estados Detectados",
-                      color_discrete_map={'CRÍTICO': '#FF4B4B', 'ESTABLE': '#0068C9'})
-    st.plotly_chart(fig_dist)
-    
-    st.info("""
-    **Nota de Asertividad:** Como estamos usando un modelo no supervisado (Isolation Forest), 
-    la 'asertividad' se mide comparando los picos de CPU/RAM detectados como 'CRÍTICOS' 
-    contra los reportes manuales en los tickets de los usuarios.
-    """)
-
-# Botón para descargar el reporte de asertividad
-csv = df.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="Descargar Reporte de Diagnóstico IA",
-    data=csv,
-    file_name='reporte_asertividad_ia.csv',
-    mime='text/csv',
-)
