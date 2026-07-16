@@ -93,3 +93,4 @@ with col_rep:
 st.divider()
 st.subheader("Inventario Técnico Completo")
 st.dataframe(df, use_container_width=True)
+ 
