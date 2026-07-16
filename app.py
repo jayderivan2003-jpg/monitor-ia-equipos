@@ -11,15 +11,24 @@ st.set_page_config(layout="wide", page_title="Monitor IA - Gestión Avanzada")
 st.title("🖥️ AI-FleetMonitor Pro: Diagnóstico de Hardware")
  
 # 1. Cargar datos
+import os
+ 
+def _csv_mtime():
+    # Devuelve la fecha de modificación del CSV; si cambia, Streamlit invalida el cache solo
+    try:
+        return os.path.getmtime('BASEDEDATOSPROYECTO.csv')
+    except FileNotFoundError:
+        return None
+ 
 @st.cache_data
-def cargar_datos():
+def cargar_datos(_mtime):
     df = pd.read_csv('BASEDEDATOSPROYECTO.csv')
     # Si hay un Ticket_Usuario, lo marcamos como REALMENTE CRÍTICO
     # Si no tiene ticket, el equipo está ESTABLE en la realidad
     df['Clase_Real'] = df['Ticket_Usuario'].apply(lambda x: 'CRÍTICO' if pd.notnull(x) else 'ESTABLE')
     return df
  
-df = cargar_datos()
+df = cargar_datos(_csv_mtime())
  
 # 2. IA: Detección de Anomalías (Isolation Forest)
 features = ['Uso_CPU_Porcentaje', 'Uso_RAM_Porcentaje', 'CPU_Normalizado_Porcentaje']
@@ -93,4 +102,3 @@ with col_rep:
 st.divider()
 st.subheader("Inventario Técnico Completo")
 st.dataframe(df, use_container_width=True)
- 
