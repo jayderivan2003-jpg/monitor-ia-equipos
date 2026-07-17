@@ -52,6 +52,13 @@ if st.button("🔄 Actualizar ahora"):
     st.cache_data.clear()
     st.rerun()
 
+if df.empty:
+    st.warning(
+        "⚠️ Todavía no hay datos en Supabase. "
+        "Corre `agente_monitor.py` en al menos una PC para que empiece a subir información."
+    )
+    st.stop()
+
 # 2. IA: Detección de Anomalías (Isolation Forest)
 features = ['Uso_CPU_Porcentaje', 'Uso_RAM_Porcentaje', 'CPU_Normalizado_Porcentaje']
 model = IsolationForest(contamination=0.1, random_state=42)
