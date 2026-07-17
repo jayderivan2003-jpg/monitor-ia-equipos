@@ -8,13 +8,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
  
 st.set_page_config(layout="wide", page_title="Monitor IA - Gestión Avanzada")
-st.title("🖥️ AI-FleetMonitor Pro: Diagnóstico de Hardware")
+st.title(" AI-FleetMonitor Pro: Diagnóstico de Hardware")
  
 # 1. Cargar datos
 import os
  
 def _csv_mtime():
-    # Devuelve la fecha de modificación del CSV; si cambia, Streamlit invalida el cache solo
+    # Devuelve la fecha de modificación del CSV
     try:
         return os.path.getmtime('BASEDEDATOSPROYECTO.csv')
     except FileNotFoundError:
