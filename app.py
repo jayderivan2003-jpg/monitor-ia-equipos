@@ -70,6 +70,23 @@ st.sidebar.header("🔍 Diagnóstico Individual")
 pc_seleccionado = st.sidebar.selectbox("Filtrar Equipo ID:", df['ID_PC'].unique())
 pc_data = df[df['ID_PC'] == pc_seleccionado]
 
+# 3.1 Formulario para reportar tickets (escribe en Supabase via función segura)
+st.sidebar.divider()
+st.sidebar.header("🎫 Reportar un Ticket")
+with st.sidebar.form("form_ticket"):
+    pc_ticket = st.selectbox("Equipo con problema:", df['ID_PC'].unique(), key="pc_ticket")
+    descripcion = st.text_area("Describe el problema:", placeholder="Ej: No enciende, pantalla azul...")
+    enviado = st.form_submit_button("📩 Reportar ticket")
+
+    if enviado:
+        if descripcion.strip():
+            supabase.rpc("reportar_ticket", {"p_id_pc": pc_ticket, "p_ticket": descripcion.strip()}).execute()
+            st.sidebar.success(f"✅ Ticket registrado para {pc_ticket}")
+            st.cache_data.clear()
+            st.rerun()
+        else:
+            st.sidebar.warning("Escribe una descripción antes de enviar.")
+
 # 4. KPIs
 col_a, col_b, col_c, col_d = st.columns(4)
 col_a.metric("Total Equipos", len(df))
