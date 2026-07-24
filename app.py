@@ -1,7 +1,10 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from sklearn.ensemble import IsolationForest
-from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (confusion_matrix, accuracy_score, precision_score, recall_score,
+                              f1_score, classification_report, roc_curve, auc)
 import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
@@ -59,11 +62,31 @@ if df.empty:
     )
     st.stop()
 
-# 2. IA: Detección de Anomalías (Isolation Forest)
+# 2. IA: Detección de Anomalías (Isolation Forest) con validación train/test
 features = ['Uso_CPU_Porcentaje', 'Uso_RAM_Porcentaje', 'CPU_Normalizado_Porcentaje']
-model = IsolationForest(contamination=0.1, random_state=42)
-df['Riesgo_IA'] = model.fit_predict(df[features])
+CONTAMINATION = 0.1
+
+n_total = len(df)
+puede_dividir = n_total >= 10 and df['Clase_Real'].nunique() == 2
+
+if puede_dividir:
+    try:
+        train_df, test_df = train_test_split(
+            df, test_size=0.3, random_state=42, stratify=df['Clase_Real']
+        )
+    except ValueError:
+        # Si alguna clase tiene muy pocos registros para estratificar, se divide sin estratificar
+        train_df, test_df = train_test_split(df, test_size=0.3, random_state=42)
+else:
+    train_df, test_df = df, df  # dataset muy pequeño todavía: se entrena y evalúa sobre todo (con advertencia visible)
+
+modelo_final = IsolationForest(contamination=CONTAMINATION, random_state=42)
+modelo_final.fit(train_df[features])
+
+# Aplica el modelo entrenado a TODA la flota (esto es lo que opera el negocio)
+df['Riesgo_IA'] = modelo_final.predict(df[features])
 df['Estado'] = df['Riesgo_IA'].apply(lambda x: 'CRÍTICO' if x == -1 else 'ESTABLE')
+df['Score_Anomalia'] = -modelo_final.decision_function(df[features])  # mayor score = mas riesgoso
 
 # 3. Sidebar
 st.sidebar.header("🔍 Diagnóstico Individual")
@@ -106,20 +129,34 @@ with c2:
                       size='Uso_RAM_Porcentaje', color_discrete_map={'CRÍTICO': '#FF4B4B', 'ESTABLE': '#0068C9'})
     st.plotly_chart(fig, use_container_width=True)
 
-# 6. EVALUACIÓN DEL MODELO DE IA
+# 6. EVALUACIÓN Y VALIDACIÓN DEL MODELO DE IA
 st.divider()
-st.subheader("📊 Evaluación del Modelo (Isolation Forest)")
-st.write("Comparación entre la predicción de la IA y la realidad (equipos con/sin ticket de soporte).")
+st.subheader("📊 Evaluación y Validación del Modelo (Isolation Forest)")
 
-y_real = df['Clase_Real']
-y_pred = df['Estado']
+if not puede_dividir:
+    st.warning(
+        f"⚠️ Solo hay {n_total} equipo(s) con datos todavía, o falta variedad de clases (CRÍTICO/ESTABLE). "
+        "Para una validación rigurosa (train/test split) se necesitan al menos 10 registros con ambas clases "
+        "representadas. Mientras tanto, el modelo se entrena y evalúa sobre el mismo conjunto completo — "
+        "esto es solo una vista preliminar, no una validación real."
+    )
+else:
+    st.caption(
+        f"✅ Validado con división train/test: {len(train_df)} equipos para entrenar, "
+        f"{len(test_df)} equipos separados para evaluar (nunca vistos durante el entrenamiento)."
+    )
+
 labels = ['CRÍTICO', 'ESTABLE']
+y_test_real = test_df['Clase_Real'].values
+pred_test = modelo_final.predict(test_df[features])
+y_test_pred = np.where(pred_test == -1, 'CRÍTICO', 'ESTABLE')
+score_test = -modelo_final.decision_function(test_df[features])
 
-# 6.1 Métricas clave
-acc = accuracy_score(y_real, y_pred)
-prec = precision_score(y_real, y_pred, pos_label='CRÍTICO', zero_division=0)
-rec = recall_score(y_real, y_pred, pos_label='CRÍTICO', zero_division=0)
-f1 = f1_score(y_real, y_pred, pos_label='CRÍTICO', zero_division=0)
+# 6.1 Métricas clave (calculadas SOLO sobre el set de prueba)
+acc = accuracy_score(y_test_real, y_test_pred)
+prec = precision_score(y_test_real, y_test_pred, pos_label='CRÍTICO', zero_division=0)
+rec = recall_score(y_test_real, y_test_pred, pos_label='CRÍTICO', zero_division=0)
+f1 = f1_score(y_test_real, y_test_pred, pos_label='CRÍTICO', zero_division=0)
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Accuracy", f"{acc:.2%}")
@@ -130,8 +167,8 @@ m4.metric("F1-Score (CRÍTICO)", f"{f1:.2%}")
 col_cm, col_rep = st.columns([1, 1])
 
 with col_cm:
-    st.markdown("**Matriz de Confusión**")
-    cm = confusion_matrix(y_real, y_pred, labels=labels)
+    st.markdown("**Matriz de Confusión** (sobre el set de prueba)")
+    cm = confusion_matrix(y_test_real, y_test_pred, labels=labels)
     fig_cm, ax = plt.subplots(figsize=(5, 4))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
                 xticklabels=labels, yticklabels=labels)
@@ -140,10 +177,64 @@ with col_cm:
     st.pyplot(fig_cm)
 
 with col_rep:
-    st.markdown("**Reporte de Clasificación**")
-    reporte = classification_report(y_real, y_pred, labels=labels, output_dict=True, zero_division=0)
+    st.markdown("**Reporte de Clasificación** (sobre el set de prueba)")
+    reporte = classification_report(y_test_real, y_test_pred, labels=labels, output_dict=True, zero_division=0)
     reporte_df = pd.DataFrame(reporte).transpose().round(2)
     st.dataframe(reporte_df, use_container_width=True)
+
+# 6.2 Curva ROC + AUC ("Score IA")
+st.markdown("### 🎯 Score IA: Curva ROC y AUC")
+st.write(
+    "El modelo no solo predice CRÍTICO/ESTABLE, también calcula un puntaje continuo de qué tan anómalo "
+    "es cada equipo. La curva ROC muestra qué tan bien ese puntaje separa los equipos críticos de los "
+    "estables en distintos umbrales de decisión. El AUC resume esa capacidad en un solo número: "
+    "1.0 = separación perfecta, 0.5 = equivalente a adivinar al azar."
+)
+
+y_test_bin = (y_test_real == 'CRÍTICO').astype(int)
+if len(np.unique(y_test_bin)) == 2:
+    fpr, tpr, _ = roc_curve(y_test_bin, score_test)
+    auc_score = auc(fpr, tpr)
+
+    fig_roc = go.Figure()
+    fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f'Modelo (AUC = {auc_score:.2f})',
+                                  line=dict(color='#0068C9', width=3)))
+    fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Azar (AUC = 0.50)',
+                                  line=dict(color='gray', dash='dash')))
+    fig_roc.update_layout(xaxis_title='Tasa de Falsos Positivos', yaxis_title='Tasa de Verdaderos Positivos',
+                           height=400)
+    st.plotly_chart(fig_roc, use_container_width=True)
+    st.metric("AUC Score", f"{auc_score:.3f}")
+else:
+    st.info("El set de prueba solo tiene una clase representada, no se puede calcular la curva ROC todavía.")
+
+# 6.3 Distribución de los puntajes de anomalía
+st.markdown("### 📈 Distribución del Puntaje de Anomalía")
+st.write("Qué tan separados están los puntajes de riesgo entre equipos CRÍTICOS y ESTABLES (sobre toda la flota).")
+fig_hist = px.histogram(df, x="Score_Anomalia", color="Clase_Real", barmode="overlay", nbins=20,
+                         color_discrete_map={'CRÍTICO': '#FF4B4B', 'ESTABLE': '#0068C9'})
+st.plotly_chart(fig_hist, use_container_width=True)
+
+# 6.4 Sensibilidad del parámetro contamination
+st.markdown("### 🔧 Justificación del parámetro `contamination`")
+st.write("Comparación de accuracy en el set de prueba usando distintos valores de `contamination`, "
+         "para justificar por qué se eligió el valor actual en vez de uno arbitrario.")
+
+valores_prueba = sorted(set([0.05, 0.1, 0.2, 0.3, CONTAMINATION,
+                              round(min(df['Clase_Real'].value_counts(normalize=True).get('CRÍTICO', 0.1), 0.5), 2)]))
+resultados_contamination = []
+for c in valores_prueba:
+    if c <= 0 or c >= 0.5:
+        continue
+    m = IsolationForest(contamination=c, random_state=42)
+    m.fit(train_df[features])
+    pred_c = m.predict(test_df[features])
+    pred_c_label = np.where(pred_c == -1, 'CRÍTICO', 'ESTABLE')
+    acc_c = accuracy_score(y_test_real, pred_c_label)
+    resultados_contamination.append({"contamination": c, "accuracy": round(acc_c, 3),
+                                      "usado_actualmente": "✅" if c == CONTAMINATION else ""})
+
+st.dataframe(pd.DataFrame(resultados_contamination), use_container_width=True, hide_index=True)
 
 st.divider()
 st.subheader("Inventario Técnico Completo")
