@@ -10,7 +10,7 @@ from supabase import create_client
 import time
 
 st.set_page_config(layout="wide", page_title="Monitor IA - Gestión Avanzada")
-st.title(" AI-FleetMonitor Pro: Diagnóstico de Hardware")
+st.title("🖥️ AI-FleetMonitor Pro: Diagnóstico de Hardware")
 
 # 1. Conexión a Supabase y carga de datos
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -32,7 +32,7 @@ def cargar_datos(_cache_bust):
         "uso_ram_porcentaje": "Uso_RAM_Porcentaje",
         "cpu_normalizado_porcentaje": "CPU_Normalizado_Porcentaje",
         "ticket_usuario": "Ticket_Usuario",
-        "temperatura_cpu_c": "Temperatura_CPU_C",
+        "porcentaje_bateria": "Porcentaje_Bateria",
         "uso_disco_porcentaje": "Uso_Disco_Porcentaje",
         "usuario": "Usuario",
         "modelo": "Modelo",
@@ -48,13 +48,13 @@ def cargar_datos(_cache_bust):
 # _cache_bust cambia cada 60s (por el ttl) forzando una consulta fresca a Supabase
 df = cargar_datos(int(time.time() // 60))
 
-if st.button(" Actualizar ahora"):
+if st.button("🔄 Actualizar ahora"):
     st.cache_data.clear()
     st.rerun()
 
 if df.empty:
     st.warning(
-        " Todavía no hay datos en Supabase. "
+        "⚠️ Todavía no hay datos en Supabase. "
         "Corre `agente_monitor.py` en al menos una PC para que empiece a subir información."
     )
     st.stop()
