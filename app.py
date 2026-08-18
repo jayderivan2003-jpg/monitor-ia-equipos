@@ -20,29 +20,229 @@ import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 from supabase import create_client
 import time
 
 
 # ============================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN GENERAL
 # ============================================================
 
 st.set_page_config(
+    page_title="AI-FleetMonitor Pro",
+    page_icon="🖥️",
     layout="wide",
-    page_title="AI-FleetMonitor Pro - Diagnóstico de Hardware",
-    page_icon="🖥️"
-)
-
-st.title("🖥️ AI-FleetMonitor Pro: Diagnóstico Inteligente de Hardware")
-st.caption(
-    "Sistema híbrido de detección de anomalías, clasificación de riesgo "
-    "y diagnóstico técnico de equipos."
+    initial_sidebar_state="expanded"
 )
 
 
 # ============================================================
-# 1. CONEXIÓN A SUPABASE
+# DISEÑO PROFESIONAL
+# ============================================================
+
+st.markdown("""
+<style>
+
+    /* --------------------------------------------------------
+       FONDO GENERAL
+       -------------------------------------------------------- */
+
+    .stApp {
+        background-color: #f5f7fb;
+    }
+
+    /* --------------------------------------------------------
+       HEADER
+       -------------------------------------------------------- */
+
+    .main-header {
+        background: linear-gradient(
+            135deg,
+            #0f172a 0%,
+            #1e3a8a 55%,
+            #2563eb 100%
+        );
+
+        padding: 28px 32px;
+        border-radius: 18px;
+        margin-bottom: 24px;
+        box-shadow: 0 8px 30px rgba(15, 23, 42, 0.15);
+    }
+
+    .main-header h1 {
+        color: white;
+        margin: 0;
+        font-size: 32px;
+        font-weight: 750;
+    }
+
+    .main-header p {
+        color: #dbeafe;
+        margin-top: 8px;
+        margin-bottom: 0;
+        font-size: 15px;
+    }
+
+
+    /* --------------------------------------------------------
+       TARJETAS
+       -------------------------------------------------------- */
+
+    .info-card {
+        background: white;
+        padding: 20px;
+        border-radius: 16px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+        margin-bottom: 15px;
+    }
+
+    .section-card {
+        background: white;
+        padding: 24px;
+        border-radius: 18px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+        margin-bottom: 20px;
+    }
+
+
+    /* --------------------------------------------------------
+       RIESGO
+       -------------------------------------------------------- */
+
+    .risk-critical {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+        padding: 18px;
+        border-radius: 14px;
+        font-weight: 600;
+    }
+
+    .risk-high {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        color: #9a3412;
+        padding: 18px;
+        border-radius: 14px;
+        font-weight: 600;
+    }
+
+    .risk-medium {
+        background: #fefce8;
+        border: 1px solid #fde68a;
+        color: #854d0e;
+        padding: 18px;
+        border-radius: 14px;
+        font-weight: 600;
+    }
+
+    .risk-stable {
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        color: #166534;
+        padding: 18px;
+        border-radius: 14px;
+        font-weight: 600;
+    }
+
+
+    /* --------------------------------------------------------
+       MÉTRICAS
+       -------------------------------------------------------- */
+
+    [data-testid="stMetric"] {
+        background-color: white;
+        border: 1px solid #e2e8f0;
+        padding: 17px;
+        border-radius: 14px;
+        box-shadow: 0 3px 12px rgba(15, 23, 42, 0.05);
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #0f172a;
+        font-weight: 750;
+    }
+
+
+    /* --------------------------------------------------------
+       SIDEBAR
+       -------------------------------------------------------- */
+
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #e2e8f0;
+    }
+
+
+    /* --------------------------------------------------------
+       BOTONES
+       -------------------------------------------------------- */
+
+    .stButton > button {
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        font-weight: 600;
+    }
+
+    .stButton > button:hover {
+        border-color: #2563eb;
+        color: #2563eb;
+    }
+
+
+    /* --------------------------------------------------------
+       TABLAS
+       -------------------------------------------------------- */
+
+    [data-testid="stDataFrame"] {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+
+    /* --------------------------------------------------------
+       TÍTULOS
+       -------------------------------------------------------- */
+
+    h2 {
+        color: #0f172a;
+        font-weight: 750;
+    }
+
+    h3 {
+        color: #1e293b;
+        font-weight: 700;
+    }
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown("""
+<div class="main-header">
+    <h1>🖥️ AI-FleetMonitor Pro</h1>
+    <p>
+        Plataforma inteligente para monitoreo, detección de anomalías,
+        clasificación de riesgo y diagnóstico técnico de equipos.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ============================================================
+# SUPABASE
 # ============================================================
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -54,19 +254,24 @@ supabase = create_client(
 )
 
 
+# ============================================================
+# CARGA DE DATOS
+# ============================================================
+
 @st.cache_data(ttl=60)
 def cargar_datos(_cache_bust):
 
-    resultado = supabase.table("equipos").select("*").execute()
+    resultado = (
+        supabase
+        .table("equipos")
+        .select("*")
+        .execute()
+    )
 
     df = pd.DataFrame(resultado.data)
 
     if df.empty:
         return df
-
-    # --------------------------------------------------------
-    # Renombrar columnas provenientes de Supabase
-    # --------------------------------------------------------
 
     df = df.rename(columns={
         "id_pc": "ID_PC",
@@ -81,10 +286,6 @@ def cargar_datos(_cache_bust):
         "modelo": "Modelo",
         "serial": "Serial",
     })
-
-    # --------------------------------------------------------
-    # Crear columnas que puedan faltar
-    # --------------------------------------------------------
 
     columnas_numericas = [
         "Uso_CPU_Porcentaje",
@@ -104,20 +305,10 @@ def cargar_datos(_cache_bust):
             errors="coerce"
         )
 
-    # --------------------------------------------------------
-    # Limpiar valores fuera de rango
-    # --------------------------------------------------------
-
-    for columna in columnas_numericas:
-
         df[columna] = df[columna].clip(
-            lower=0,
-            upper=100
+            0,
+            100
         )
-
-    # --------------------------------------------------------
-    # Fecha
-    # --------------------------------------------------------
 
     if "Fecha_Hora" in df.columns:
 
@@ -126,23 +317,17 @@ def cargar_datos(_cache_bust):
             errors="coerce"
         )
 
-    # --------------------------------------------------------
-    # Ticket real
-    #
-    # Un ticket con texto = evidencia de problema reportado.
-    # --------------------------------------------------------
-
     if "Ticket_Usuario" not in df.columns:
         df["Ticket_Usuario"] = np.nan
 
-    ticket_limpio = (
+    tickets = (
         df["Ticket_Usuario"]
         .fillna("")
         .astype(str)
         .str.strip()
     )
 
-    df["Tiene_Ticket"] = ticket_limpio.ne("")
+    df["Tiene_Ticket"] = tickets.ne("")
 
     df["Clase_Real"] = np.where(
         df["Tiene_Ticket"],
@@ -154,7 +339,7 @@ def cargar_datos(_cache_bust):
 
 
 # ============================================================
-# CARGA
+# CARGAR
 # ============================================================
 
 df = cargar_datos(
@@ -162,7 +347,7 @@ df = cargar_datos(
 )
 
 
-if st.button("🔄 Actualizar ahora"):
+if st.button("🔄 Actualizar datos"):
 
     st.cache_data.clear()
     st.rerun()
@@ -171,21 +356,16 @@ if st.button("🔄 Actualizar ahora"):
 if df.empty:
 
     st.warning(
-        "Todavía no hay datos en Supabase. "
-        "Ejecuta `agente_monitor.py` en al menos una PC "
-        "para empezar a recibir información."
+        "Todavía no hay información disponible en Supabase. "
+        "Ejecuta `agente_monitor.py` en al menos un equipo."
     )
 
     st.stop()
 
 
 # ============================================================
-# 2. PREPARACIÓN DE DATOS PARA IA
+# PREPROCESAMIENTO
 # ============================================================
-
-# ------------------------------------------------------------
-# Rellenar faltantes
-# ------------------------------------------------------------
 
 columnas_base = [
     "Uso_CPU_Porcentaje",
@@ -195,29 +375,27 @@ columnas_base = [
     "Uso_Disco_Porcentaje"
 ]
 
+
 for columna in columnas_base:
 
     if columna not in df.columns:
-        df[columna] = np.nan
-
-
-for columna in columnas_base:
+        df[columna] = 0
 
     mediana = df[columna].median()
 
     if pd.isna(mediana):
         mediana = 0
 
-    df[columna] = df[columna].fillna(mediana)
+    df[columna] = (
+        df[columna]
+        .fillna(mediana)
+        .clip(0, 100)
+    )
 
 
 # ============================================================
-# 3. VARIABLES INTELIGENTES DERIVADAS
+# VARIABLES DERIVADAS
 # ============================================================
-
-# ------------------------------------------------------------
-# Presión general de recursos
-# ------------------------------------------------------------
 
 df["Presion_Recursos"] = df[
     [
@@ -228,10 +406,6 @@ df["Presion_Recursos"] = df[
 ].max(axis=1)
 
 
-# ------------------------------------------------------------
-# Promedio general de utilización
-# ------------------------------------------------------------
-
 df["Promedio_Recursos"] = df[
     [
         "Uso_CPU_Porcentaje",
@@ -241,42 +415,30 @@ df["Promedio_Recursos"] = df[
 ].mean(axis=1)
 
 
-# ------------------------------------------------------------
-# Combinación CPU + RAM
-# ------------------------------------------------------------
-
 df["CPU_RAM_Conjunta"] = (
-    df["Uso_CPU_Porcentaje"] *
-    df["Uso_RAM_Porcentaje"]
+    df["Uso_CPU_Porcentaje"]
+    * df["Uso_RAM_Porcentaje"]
 ) / 100
 
 
-# ------------------------------------------------------------
-# Diferencia CPU normalizada / CPU actual
-# ------------------------------------------------------------
-
 df["Diferencia_CPU"] = (
-    df["CPU_Normalizado_Porcentaje"] -
-    df["Uso_CPU_Porcentaje"]
+    df["CPU_Normalizado_Porcentaje"]
+    - df["Uso_CPU_Porcentaje"]
 ).abs()
 
 
-# ------------------------------------------------------------
-# Nivel de saturación
-# ------------------------------------------------------------
-
 df["Componentes_Saturados"] = (
-    (df["Uso_CPU_Porcentaje"] >= 85).astype(int) +
-    (df["Uso_RAM_Porcentaje"] >= 85).astype(int) +
+    (df["Uso_CPU_Porcentaje"] >= 85).astype(int)
+    +
+    (df["Uso_RAM_Porcentaje"] >= 85).astype(int)
+    +
     (df["Uso_Disco_Porcentaje"] >= 90).astype(int)
 )
 
 
 # ============================================================
-# 4. TENDENCIA POR EQUIPO
+# TENDENCIAS
 # ============================================================
-
-# Si tenemos fecha, podemos calcular comportamiento reciente.
 
 if "Fecha_Hora" in df.columns:
 
@@ -285,32 +447,38 @@ if "Fecha_Hora" in df.columns:
     ).copy()
 
     df["CPU_Anterior"] = (
-        df.groupby("ID_PC")["Uso_CPU_Porcentaje"]
-        .shift(1)
+        df.groupby("ID_PC")[
+            "Uso_CPU_Porcentaje"
+        ].shift(1)
     )
 
     df["RAM_Anterior"] = (
-        df.groupby("ID_PC")["Uso_RAM_Porcentaje"]
-        .shift(1)
+        df.groupby("ID_PC")[
+            "Uso_RAM_Porcentaje"
+        ].shift(1)
     )
 
     df["Disco_Anterior"] = (
-        df.groupby("ID_PC")["Uso_Disco_Porcentaje"]
-        .shift(1)
+        df.groupby("ID_PC")[
+            "Uso_Disco_Porcentaje"
+        ].shift(1)
     )
 
     df["Tendencia_CPU"] = (
-        df["Uso_CPU_Porcentaje"] -
+        df["Uso_CPU_Porcentaje"]
+        -
         df["CPU_Anterior"]
     ).fillna(0)
 
     df["Tendencia_RAM"] = (
-        df["Uso_RAM_Porcentaje"] -
+        df["Uso_RAM_Porcentaje"]
+        -
         df["RAM_Anterior"]
     ).fillna(0)
 
     df["Tendencia_Disco"] = (
-        df["Uso_Disco_Porcentaje"] -
+        df["Uso_Disco_Porcentaje"]
+        -
         df["Disco_Anterior"]
     ).fillna(0)
 
@@ -322,7 +490,7 @@ else:
 
 
 # ============================================================
-# 5. FEATURES DE IA
+# FEATURES
 # ============================================================
 
 features = [
@@ -357,25 +525,20 @@ X = X.fillna(0)
 
 
 # ============================================================
-# 6. CONFIGURACIÓN DEL MODELO
+# DATOS PARA CLASIFICACIÓN
 # ============================================================
 
 n_total = len(df)
 
-conteo_clases = df["Clase_Real"].value_counts()
-
-cantidad_criticos = conteo_clases.get(
-    "CRÍTICO",
-    0
+cantidad_criticos = int(
+    (df["Clase_Real"] == "CRÍTICO").sum()
 )
 
-cantidad_estables = conteo_clases.get(
-    "ESTABLE",
-    0
+cantidad_estables = int(
+    (df["Clase_Real"] == "ESTABLE").sum()
 )
 
 
-# Se necesita suficiente información de ambas clases
 puede_usar_supervisado = (
     n_total >= 20
     and cantidad_criticos >= 5
@@ -384,7 +547,7 @@ puede_usar_supervisado = (
 
 
 # ============================================================
-# 7. TRAIN / TEST
+# TRAIN / TEST
 # ============================================================
 
 if puede_usar_supervisado:
@@ -403,7 +566,9 @@ else:
 
 
 X_train = train_df[features].copy()
+
 X_test = test_df[features].copy()
+
 
 X_train = (
     X_train
@@ -411,6 +576,7 @@ X_train = (
     .fillna(X.median())
     .fillna(0)
 )
+
 
 X_test = (
     X_test
@@ -421,7 +587,18 @@ X_test = (
 
 
 # ============================================================
-# 8. MODELO SUPERVISADO
+# VARIABLES DE EVALUACIÓN
+# IMPORTANTE:
+# SE DEFINEN SIEMPRE
+# ============================================================
+
+y_test_real = test_df[
+    "Clase_Real"
+].values
+
+
+# ============================================================
+# MODELO SUPERVISADO
 # ============================================================
 
 modelo_supervisado = None
@@ -445,18 +622,15 @@ if puede_usar_supervisado:
 
 
 # ============================================================
-# 9. ISOLATION FOREST
+# CONTAMINATION DINÁMICO
 # ============================================================
-
-# En vez de obligar a exactamente 10% de anomalías,
-# calculamos una contaminación razonable según la cantidad
-# de equipos con ticket, limitándola a un rango sano.
 
 proporcion_criticos = (
     cantidad_criticos / n_total
     if n_total > 0
-    else 0.1
+    else 0.10
 )
+
 
 CONTAMINATION = float(
     np.clip(
@@ -466,6 +640,10 @@ CONTAMINATION = float(
     )
 )
 
+
+# ============================================================
+# ISOLATION FOREST
+# ============================================================
 
 modelo_anomalia = IsolationForest(
     n_estimators=400,
@@ -480,49 +658,16 @@ modelo_anomalia.fit(
 )
 
 
-# ============================================================
-# 10. PREDICCIÓN SUPERVISADA
-# ============================================================
-
-if modelo_supervisado is not None:
-
-    probabilidades = modelo_supervisado.predict_proba(
-        X
-    )
-
-    clases_modelo = list(
-        modelo_supervisado.classes_
-    )
-
-    if "CRÍTICO" in clases_modelo:
-
-        indice_critico = clases_modelo.index("CRÍTICO")
-
-        prob_critico = probabilidades[:, indice_critico]
-
-    else:
-
-        prob_critico = np.zeros(len(df))
-
-else:
-
-    # Sin suficiente historial supervisado,
-    # empezamos desde el componente de anomalía.
-    prob_critico = np.zeros(len(df))
-
-
-# ============================================================
-# 11. DETECCIÓN DE ANOMALÍAS
-# ============================================================
-
 pred_anomalia = modelo_anomalia.predict(X)
 
-raw_anomaly = -modelo_anomalia.decision_function(X)
+raw_anomaly = (
+    -modelo_anomalia.decision_function(X)
+)
 
 
-# ------------------------------------------------------------
-# Convertir anomaly score a una escala 0-100
-# ------------------------------------------------------------
+# ============================================================
+# SCORE DE ANOMALÍA 0-100
+# ============================================================
 
 p05 = np.percentile(
     raw_anomaly,
@@ -534,10 +679,12 @@ p95 = np.percentile(
     95
 )
 
+
 if p95 > p05:
 
     anomaly_score = (
-        (raw_anomaly - p05) /
+        (raw_anomaly - p05)
+        /
         (p95 - p05)
     ) * 100
 
@@ -556,8 +703,50 @@ anomaly_score = np.clip(
 )
 
 
+df["Score_Anomalia"] = anomaly_score
+
+
 # ============================================================
-# 12. SCORE TÉCNICO POR REGLAS
+# PREDICCIÓN SUPERVISADA
+# ============================================================
+
+if modelo_supervisado is not None:
+
+    probabilidades = (
+        modelo_supervisado
+        .predict_proba(X)
+    )
+
+    clases_modelo = list(
+        modelo_supervisado.classes_
+    )
+
+    if "CRÍTICO" in clases_modelo:
+
+        indice_critico = clases_modelo.index(
+            "CRÍTICO"
+        )
+
+        prob_critico = probabilidades[
+            :,
+            indice_critico
+        ]
+
+    else:
+
+        prob_critico = np.zeros(
+            len(df)
+        )
+
+else:
+
+    prob_critico = np.zeros(
+        len(df)
+    )
+
+
+# ============================================================
+# SCORE TÉCNICO
 # ============================================================
 
 def calcular_score_tecnico(row):
@@ -565,49 +754,69 @@ def calcular_score_tecnico(row):
     cpu = row["Uso_CPU_Porcentaje"]
     ram = row["Uso_RAM_Porcentaje"]
     disco = row["Uso_Disco_Porcentaje"]
-    cpu_norm = row["CPU_Normalizado_Porcentaje"]
+    cpu_norm = row[
+        "CPU_Normalizado_Porcentaje"
+    ]
 
     score = 0
 
     # CPU
     if cpu >= 95:
         score += 30
+
     elif cpu >= 85:
         score += 22
+
     elif cpu >= 75:
         score += 12
+
     elif cpu >= 65:
         score += 5
+
 
     # RAM
     if ram >= 95:
         score += 25
+
     elif ram >= 85:
         score += 18
+
     elif ram >= 75:
         score += 10
+
     elif ram >= 65:
         score += 5
 
-    # Disco
+
+    # DISCO
     if disco >= 97:
         score += 25
+
     elif disco >= 90:
         score += 18
+
     elif disco >= 80:
         score += 10
+
     elif disco >= 70:
         score += 5
 
-    # CPU normalizada
+
+    # CPU NORMALIZADA
     if cpu_norm >= 95:
         score += 20
+
     elif cpu_norm >= 85:
         score += 12
+
     elif cpu_norm >= 75:
         score += 5
 
-    return min(score, 100)
+
+    return min(
+        score,
+        100
+    )
 
 
 df["Score_Tecnico"] = df.apply(
@@ -617,29 +826,25 @@ df["Score_Tecnico"] = df.apply(
 
 
 # ============================================================
-# 13. SCORE FINAL DE RIESGO
+# SCORE FINAL
 # ============================================================
 
 if modelo_supervisado is not None:
 
-    # El aprendizaje histórico tiene mayor peso,
-    # pero nunca se ignoran anomalías ni síntomas técnicos.
-
     df["Riesgo_IA"] = (
         prob_critico * 0.55
-        + anomaly_score * 0.25
-        + df["Score_Tecnico"] * 0.20
+        +
+        anomaly_score * 0.25
+        +
+        df["Score_Tecnico"] * 0.20
     )
 
 else:
 
-    # Cuando aún no hay suficientes tickets:
-    # el sistema depende principalmente del comportamiento
-    # estadístico y del diagnóstico técnico.
-
     df["Riesgo_IA"] = (
         anomaly_score * 0.55
-        + df["Score_Tecnico"] * 0.45
+        +
+        df["Score_Tecnico"] * 0.45
     )
 
 
@@ -651,7 +856,7 @@ df["Riesgo_IA"] = np.clip(
 
 
 # ============================================================
-# 14. ESTADO DEL EQUIPO
+# CLASIFICACIÓN
 # ============================================================
 
 def determinar_estado(riesgo):
@@ -659,47 +864,41 @@ def determinar_estado(riesgo):
     if riesgo >= 80:
         return "CRÍTICO"
 
-    elif riesgo >= 60:
+    if riesgo >= 60:
         return "ALTO"
 
-    elif riesgo >= 35:
+    if riesgo >= 35:
         return "MEDIO"
 
-    else:
-        return "ESTABLE"
+    return "ESTABLE"
 
 
-df["Estado"] = df["Riesgo_IA"].apply(
-    determinar_estado
-)
-
-
-# ============================================================
-# 15. NIVEL DE RIESGO
-# ============================================================
-
-def nivel_riesgo(riesgo):
+def determinar_nivel(riesgo):
 
     if riesgo >= 80:
         return "Muy alto"
 
-    elif riesgo >= 60:
+    if riesgo >= 60:
         return "Alto"
 
-    elif riesgo >= 35:
+    if riesgo >= 35:
         return "Moderado"
 
-    else:
-        return "Bajo"
+    return "Bajo"
 
 
-df["Nivel_Riesgo"] = df["Riesgo_IA"].apply(
-    nivel_riesgo
-)
+df["Estado"] = df[
+    "Riesgo_IA"
+].apply(determinar_estado)
+
+
+df["Nivel_Riesgo"] = df[
+    "Riesgo_IA"
+].apply(determinar_nivel)
 
 
 # ============================================================
-# 16. DIAGNÓSTICO AUTOMÁTICO
+# DIAGNÓSTICO
 # ============================================================
 
 def generar_diagnostico(row):
@@ -709,92 +908,107 @@ def generar_diagnostico(row):
     cpu = row["Uso_CPU_Porcentaje"]
     ram = row["Uso_RAM_Porcentaje"]
     disco = row["Uso_Disco_Porcentaje"]
-    cpu_norm = row["CPU_Normalizado_Porcentaje"]
+    cpu_norm = row[
+        "CPU_Normalizado_Porcentaje"
+    ]
 
-    tendencia_cpu = row["Tendencia_CPU"]
-    tendencia_ram = row["Tendencia_RAM"]
-    tendencia_disco = row["Tendencia_Disco"]
+    tendencia_cpu = row[
+        "Tendencia_CPU"
+    ]
 
-    # CPU
+    tendencia_ram = row[
+        "Tendencia_RAM"
+    ]
+
+    tendencia_disco = row[
+        "Tendencia_Disco"
+    ]
+
+
     if cpu >= 95:
 
         problemas.append(
-            "CPU en nivel crítico (≥95%). "
-            "Existe una saturación importante del procesador."
+            "La CPU presenta una saturación crítica "
+            "(≥95%)."
         )
 
     elif cpu >= 85:
 
         problemas.append(
-            "CPU elevada (≥85%). "
-            "Puede existir carga excesiva de procesos o aplicaciones."
+            "La CPU presenta un nivel elevado "
+            "(≥85%)."
         )
 
-    # RAM
+
     if ram >= 95:
 
         problemas.append(
-            "Memoria RAM en nivel crítico (≥95%). "
-            "Existe alta posibilidad de presión de memoria."
+            "La RAM está en nivel crítico "
+            "(≥95%), indicando una alta presión de memoria."
         )
 
     elif ram >= 85:
 
         problemas.append(
-            "Memoria RAM elevada (≥85%). "
-            "Puede existir consumo excesivo de aplicaciones."
+            "El consumo de RAM es elevado "
+            "(≥85%)."
         )
 
-    # Disco
+
     if disco >= 97:
 
         problemas.append(
-            "Actividad de disco extremadamente alta (≥97%). "
-            "Puede existir saturación de E/S o procesos intensivos."
+            "La actividad del disco es extremadamente elevada "
+            "(≥97%)."
         )
 
     elif disco >= 90:
 
         problemas.append(
-            "Actividad de disco elevada (≥90%). "
-            "Conviene revisar procesos que realizan operaciones de lectura/escritura."
+            "La actividad del disco es elevada "
+            "(≥90%)."
         )
 
-    # CPU normalizada
+
     if cpu_norm >= 90:
 
         problemas.append(
-            "El comportamiento de CPU normalizado también es elevado, "
-            "lo que refuerza la señal de sobrecarga."
+            "La CPU normalizada confirma un comportamiento "
+            "de alta carga."
         )
 
-    # Tendencias
+
     if tendencia_cpu >= 15:
 
         problemas.append(
-            "La CPU está aumentando rápidamente respecto a la medición anterior."
+            "La utilización de CPU está aumentando rápidamente."
         )
+
 
     if tendencia_ram >= 15:
 
         problemas.append(
-            "El consumo de RAM está aumentando respecto a la medición anterior."
+            "El consumo de RAM está aumentando respecto "
+            "a la medición anterior."
         )
+
 
     if tendencia_disco >= 15:
 
         problemas.append(
-            "La actividad de disco está aumentando rápidamente."
+            "La actividad del almacenamiento presenta "
+            "un incremento considerable."
         )
 
-    # Sin síntomas claros
+
     if not problemas:
 
         return (
-            "No se observan niveles críticos de utilización en los "
-            "recursos monitoreados. El comportamiento actual es consistente "
-            "con una operación estable."
+            "No se identifican señales técnicas críticas "
+            "en las métricas actuales. El comportamiento "
+            "del equipo es consistente con una operación estable."
         )
+
 
     return " ".join(problemas)
 
@@ -806,73 +1020,92 @@ df["Diagnostico_IA"] = df.apply(
 
 
 # ============================================================
-# 17. RECOMENDACIONES AUTOMÁTICAS
+# RECOMENDACIONES
 # ============================================================
 
 def generar_recomendaciones(row):
 
     recomendaciones = []
 
-    cpu = row["Uso_CPU_Porcentaje"]
-    ram = row["Uso_RAM_Porcentaje"]
-    disco = row["Uso_Disco_Porcentaje"]
+    cpu = row[
+        "Uso_CPU_Porcentaje"
+    ]
 
-    # CPU
+    ram = row[
+        "Uso_RAM_Porcentaje"
+    ]
+
+    disco = row[
+        "Uso_Disco_Porcentaje"
+    ]
+
+    bateria = row[
+        "Porcentaje_Bateria"
+    ]
+
+
     if cpu >= 85:
 
         recomendaciones.append(
-            "Revisar en el Administrador de tareas los procesos "
-            "que presentan mayor consumo de CPU."
+            "Revisar el Administrador de tareas y "
+            "localizar los procesos con mayor consumo de CPU."
         )
 
-    # RAM
+
     if ram >= 85:
 
         recomendaciones.append(
-            "Cerrar aplicaciones innecesarias y revisar procesos "
-            "que estén consumiendo una cantidad elevada de memoria."
+            "Revisar aplicaciones con alto consumo de memoria "
+            "y cerrar procesos innecesarios."
         )
 
-    # Disco
+
     if disco >= 90:
 
         recomendaciones.append(
-            "Revisar actividad del almacenamiento, espacio disponible "
-            "y aplicaciones que estén generando alta E/S de disco."
+            "Revisar aplicaciones con alta actividad de disco, "
+            "estado del almacenamiento y espacio disponible."
         )
 
-    # Batería
-    bateria = row["Porcentaje_Bateria"]
 
     if bateria <= 15:
 
         recomendaciones.append(
-            "Conectar el equipo a corriente y verificar el estado de la batería."
+            "Conectar el equipo a corriente y verificar el "
+            "estado de la batería."
         )
 
-    # CPU + RAM
-    if cpu >= 85 and ram >= 85:
+
+    if (
+        cpu >= 85
+        and ram >= 85
+    ):
 
         recomendaciones.append(
-            "Investigar aplicaciones que simultáneamente generan alta "
-            "carga de CPU y memoria."
+            "Realizar una revisión de las aplicaciones que "
+            "están generando simultáneamente alta carga de CPU y RAM."
         )
 
-    # Los tres
-    if cpu >= 85 and ram >= 85 and disco >= 90:
+
+    if (
+        cpu >= 85
+        and ram >= 85
+        and disco >= 90
+    ):
 
         recomendaciones.append(
-            "Realizar diagnóstico integral porque existe saturación "
-            "simultánea de CPU, RAM y almacenamiento."
+            "Realizar diagnóstico integral del equipo debido "
+            "a saturación simultánea de CPU, memoria y almacenamiento."
         )
 
-    # Ninguna alerta
+
     if not recomendaciones:
 
         recomendaciones.append(
-            "Continuar con el monitoreo. No se requiere una intervención "
-            "inmediata con las métricas actuales."
+            "No se requiere una intervención inmediata. "
+            "Mantener el monitoreo preventivo."
         )
+
 
     return recomendaciones
 
@@ -884,49 +1117,64 @@ df["Recomendaciones_IA"] = df.apply(
 
 
 # ============================================================
-# 18. SIDEBAR
+# SIDEBAR
 # ============================================================
 
-st.sidebar.header("🔍 Diagnóstico Individual")
-
-pc_seleccionado = st.sidebar.selectbox(
-    "Filtrar Equipo ID:",
-    sorted(df["ID_PC"].astype(str).unique())
+st.sidebar.markdown(
+    "## 🔍 Diagnóstico"
 )
 
+pc_seleccionado = st.sidebar.selectbox(
+    "Equipo:",
+    sorted(
+        df["ID_PC"]
+        .astype(str)
+        .unique()
+    )
+)
+
+
 pc_data = df[
-    df["ID_PC"].astype(str) ==
+    df["ID_PC"].astype(str)
+    ==
     str(pc_seleccionado)
 ]
 
 
-# ============================================================
-# 19. REPORTAR TICKET
-# ============================================================
-
 st.sidebar.divider()
 
-st.sidebar.header("🎫 Reportar un Ticket")
+st.sidebar.markdown(
+    "## 🎫 Reportar incidente"
+)
 
-with st.sidebar.form("form_ticket"):
+
+with st.sidebar.form(
+    "form_ticket"
+):
 
     pc_ticket = st.selectbox(
-        "Equipo con problema:",
-        sorted(df["ID_PC"].astype(str).unique()),
+        "Equipo:",
+        sorted(
+            df["ID_PC"]
+            .astype(str)
+            .unique()
+        ),
         key="pc_ticket"
     )
 
     descripcion = st.text_area(
-        "Describe el problema:",
+        "Descripción:",
         placeholder=(
-            "Ej: El equipo está lento, "
-            "se congela o presenta pantalla azul..."
+            "Ejemplo: el equipo está lento, "
+            "se congela, presenta pantalla azul..."
         )
     )
 
     enviado = st.form_submit_button(
-        "🎫 Reportar ticket"
+        "🎫 Registrar ticket",
+        use_container_width=True
     )
+
 
     if enviado:
 
@@ -943,90 +1191,98 @@ with st.sidebar.form("form_ticket"):
                 ).execute()
 
                 st.sidebar.success(
-                    f"Ticket registrado correctamente para {pc_ticket}"
+                    "Ticket registrado correctamente."
                 )
 
                 st.cache_data.clear()
+
                 st.rerun()
 
             except Exception as e:
 
                 st.sidebar.error(
-                    f"No se pudo registrar el ticket: {e}"
+                    f"Error al registrar: {e}"
                 )
 
         else:
 
             st.sidebar.warning(
-                "Escribe una descripción antes de enviar."
+                "Debes escribir una descripción."
             )
 
 
 # ============================================================
-# 20. OBTENER EQUIPO SELECCIONADO
+# EQUIPO SELECCIONADO
 # ============================================================
 
 equipo = pc_data.iloc[0]
 
+indice_equipo = equipo.name
 
 riesgo_pc = float(
     equipo["Riesgo_IA"]
 )
 
-
-estado_pc = equipo["Estado"]
+estado_pc = equipo[
+    "Estado"
+]
 
 
 # ============================================================
-# 21. KPIs
+# KPI PRINCIPALES
 # ============================================================
 
-col_a, col_b, col_c, col_d, col_e = st.columns(5)
+st.markdown(
+    "### 📊 Estado general de la flota"
+)
 
-col_a.metric(
-    "Total Equipos",
+
+k1, k2, k3, k4, k5 = st.columns(5)
+
+
+k1.metric(
+    "🖥️ Equipos",
     len(df)
 )
 
-col_b.metric(
-    "Equipos en Riesgo",
+k2.metric(
+    "🚨 En riesgo",
     int(
-        (df["Estado"].isin(["CRÍTICO", "ALTO"])).sum()
+        df["Estado"]
+        .isin(["CRÍTICO", "ALTO"])
+        .sum()
     )
 )
 
-col_c.metric(
-    "Riesgo Crítico",
+k3.metric(
+    "🔴 Críticos",
     int(
-        (df["Estado"] == "CRÍTICO").sum()
+        (
+            df["Estado"] ==
+            "CRÍTICO"
+        ).sum()
     )
 )
 
-col_d.metric(
-    "Promedio CPU",
+k4.metric(
+    "⚙️ CPU promedio",
     f"{df['Uso_CPU_Porcentaje'].mean():.1f}%"
 )
 
-col_e.metric(
-    "Promedio RAM",
+k5.metric(
+    "🧠 RAM promedio",
     f"{df['Uso_RAM_Porcentaje'].mean():.1f}%"
 )
 
 
 # ============================================================
-# 22. DIAGNÓSTICO INDIVIDUAL
+# DIAGNÓSTICO INDIVIDUAL
 # ============================================================
 
-st.divider()
-
-st.subheader(
-    f"🧠 Diagnóstico Inteligente — {pc_seleccionado}"
+st.markdown(
+    "### 🧠 Diagnóstico inteligente"
 )
 
-
-# ------------------------------------------------------------
-# Estado
-# ------------------------------------------------------------
 
 estado_iconos = {
     "CRÍTICO": "🔴",
@@ -1042,34 +1298,70 @@ icono = estado_iconos.get(
 )
 
 
-d1, d2, d3, d4 = st.columns(4)
+if estado_pc == "CRÍTICO":
 
-d1.metric(
-    "Estado IA",
-    f"{icono} {estado_pc}"
+    clase_css = "risk-critical"
+
+elif estado_pc == "ALTO":
+
+    clase_css = "risk-high"
+
+elif estado_pc == "MEDIO":
+
+    clase_css = "risk-medium"
+
+else:
+
+    clase_css = "risk-stable"
+
+
+st.markdown(
+    f"""
+    <div class="{clase_css}">
+        {icono} {estado_pc} —
+        Riesgo IA: {riesgo_pc:.1f}/100 —
+        Nivel: {equipo['Nivel_Riesgo']}
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
-d2.metric(
-    "Riesgo",
+
+st.write("")
+
+
+d1, d2, d3, d4 = st.columns(4)
+
+
+d1.metric(
+    "Riesgo IA",
     f"{riesgo_pc:.1f}/100"
 )
 
+d2.metric(
+    "Anomalía",
+    f"{equipo['Score_Anomalia']:.1f}/100"
+)
+
 d3.metric(
-    "Nivel",
-    equipo["Nivel_Riesgo"]
+    "Riesgo técnico",
+    f"{equipo['Score_Tecnico']:.1f}/100"
 )
 
 d4.metric(
-    "Anomalía",
-    f"{anomaly_score[df.index.get_loc(equipo.name)]:.1f}/100"
+    "Ticket",
+    "Sí"
+    if equipo["Tiene_Ticket"]
+    else "No"
 )
 
 
 # ============================================================
-# 23. DETALLE DE RECURSOS
+# RECURSOS
 # ============================================================
 
 r1, r2, r3, r4, r5 = st.columns(5)
+
 
 r1.metric(
     "CPU",
@@ -1082,7 +1374,7 @@ r2.metric(
 )
 
 r3.metric(
-    "CPU Normalizada",
+    "CPU normalizada",
     f"{equipo['CPU_Normalizado_Porcentaje']:.1f}%"
 )
 
@@ -1098,293 +1390,476 @@ r5.metric(
 
 
 # ============================================================
-# 24. EXPLICACIÓN DE LA IA
+# DIAGNÓSTICO
 # ============================================================
 
-st.markdown("### 🔎 ¿Por qué la IA dio este resultado?")
+with st.container():
 
-st.info(
-    equipo["Diagnostico_IA"]
-)
+    st.markdown(
+        "#### 🔎 Análisis de la IA"
+    )
 
-
-# ============================================================
-# 25. RECOMENDACIONES
-# ============================================================
-
-st.markdown("### 🛠️ Recomendaciones de solución")
-
-for recomendacion in equipo["Recomendaciones_IA"]:
-
-    st.write(
-        f"• {recomendacion}"
+    st.info(
+        equipo["Diagnostico_IA"]
     )
 
 
-# ============================================================
-# 26. PUNTAJES INTERNOS
-# ============================================================
-
-st.markdown("### 📊 Componentes del riesgo")
-
-score1, score2, score3 = st.columns(3)
-
-score1.metric(
-    "Modelo supervisado",
-    f"{float(prob_critico[df.index.get_loc(equipo.name)]):.1f}%"
-)
-
-score2.metric(
-    "Anomalía estadística",
-    f"{anomaly_score[df.index.get_loc(equipo.name)]:.1f}/100"
-)
-
-score3.metric(
-    "Riesgo técnico",
-    f"{equipo['Score_Tecnico']:.1f}/100"
-)
-
-
-# ============================================================
-# 27. DASHBOARD PRINCIPAL
-# ============================================================
-
-c1, c2 = st.columns([1, 2])
-
-
-with c1:
-
-    st.subheader(
-        f"Detalles técnicos: {pc_seleccionado}"
+    st.markdown(
+        "#### 🛠️ Recomendaciones"
     )
 
-    detalle = pd.DataFrame({
-        "Indicador": [
-            "Equipo",
-            "Usuario",
-            "Modelo",
-            "Serial",
-            "Estado IA",
-            "Nivel de riesgo",
-            "Riesgo IA",
-            "Uso CPU",
-            "Uso RAM",
-            "CPU normalizada",
-            "Uso disco",
-            "Batería",
-            "Componentes saturados",
-            "Tiene ticket"
-        ],
+    for recomendacion in equipo[
+        "Recomendaciones_IA"
+    ]:
 
-        "Valor": [
-            equipo["ID_PC"],
-            equipo.get("Usuario", "No disponible"),
-            equipo.get("Modelo", "No disponible"),
-            equipo.get("Serial", "No disponible"),
-            estado_pc,
-            equipo["Nivel_Riesgo"],
-            f"{riesgo_pc:.1f}/100",
-            f"{equipo['Uso_CPU_Porcentaje']:.1f}%",
-            f"{equipo['Uso_RAM_Porcentaje']:.1f}%",
-            f"{equipo['CPU_Normalizado_Porcentaje']:.1f}%",
-            f"{equipo['Uso_Disco_Porcentaje']:.1f}%",
-            f"{equipo['Porcentaje_Bateria']:.1f}%",
-            int(equipo["Componentes_Saturados"]),
-            "Sí" if equipo["Tiene_Ticket"] else "No"
+        st.write(
+            f"• {recomendacion}"
+        )
+
+
+# ============================================================
+# TABS PRINCIPALES
+# ============================================================
+
+tab_dashboard, tab_evaluacion, tab_inventario = st.tabs(
+    [
+        "📊 Dashboard",
+        "🤖 Evaluación de IA",
+        "🖥️ Inventario"
+    ]
+)
+
+
+# ============================================================
+# TAB DASHBOARD
+# ============================================================
+
+with tab_dashboard:
+
+    st.markdown(
+        "### 🗺️ Mapa de riesgo"
+    )
+
+    c1, c2 = st.columns(
+        [1, 2]
+    )
+
+
+    with c1:
+
+        st.markdown(
+            "#### Equipo seleccionado"
+        )
+
+        detalle = pd.DataFrame(
+            {
+                "Indicador": [
+                    "ID",
+                    "Usuario",
+                    "Modelo",
+                    "Serial",
+                    "Estado IA",
+                    "Nivel",
+                    "Riesgo",
+                    "CPU",
+                    "RAM",
+                    "CPU normalizada",
+                    "Disco",
+                    "Batería"
+                ],
+
+                "Valor": [
+                    equipo["ID_PC"],
+                    equipo.get(
+                        "Usuario",
+                        "No disponible"
+                    ),
+                    equipo.get(
+                        "Modelo",
+                        "No disponible"
+                    ),
+                    equipo.get(
+                        "Serial",
+                        "No disponible"
+                    ),
+                    estado_pc,
+                    equipo["Nivel_Riesgo"],
+                    f"{riesgo_pc:.1f}/100",
+                    f"{equipo['Uso_CPU_Porcentaje']:.1f}%",
+                    f"{equipo['Uso_RAM_Porcentaje']:.1f}%",
+                    f"{equipo['CPU_Normalizado_Porcentaje']:.1f}%",
+                    f"{equipo['Uso_Disco_Porcentaje']:.1f}%",
+                    f"{equipo['Porcentaje_Bateria']:.1f}%"
+                ]
+            }
+        )
+
+
+        st.dataframe(
+            detalle,
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+    with c2:
+
+        mapa = px.scatter(
+            df,
+            x="Uso_CPU_Porcentaje",
+            y="Uso_RAM_Porcentaje",
+            color="Estado",
+            size="Riesgo_IA",
+            hover_data=[
+                "ID_PC",
+                "Uso_Disco_Porcentaje",
+                "Riesgo_IA",
+                "Nivel_Riesgo",
+                "Tiene_Ticket"
+            ],
+            color_discrete_map={
+                "CRÍTICO": "#dc2626",
+                "ALTO": "#f97316",
+                "MEDIO": "#eab308",
+                "ESTABLE": "#2563eb"
+            }
+        )
+
+
+        mapa.update_layout(
+            height=500,
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            xaxis_title="Uso de CPU (%)",
+            yaxis_title="Uso de RAM (%)",
+            legend_title="Estado IA"
+        )
+
+
+        st.plotly_chart(
+            mapa,
+            use_container_width=True
+        )
+
+
+    # --------------------------------------------------------
+    # PRIORIZACIÓN
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 🚨 Priorización de atención"
+    )
+
+
+    priorizacion = df[
+        [
+            "ID_PC",
+            "Estado",
+            "Nivel_Riesgo",
+            "Riesgo_IA",
+            "Uso_CPU_Porcentaje",
+            "Uso_RAM_Porcentaje",
+            "Uso_Disco_Porcentaje",
+            "Score_Tecnico",
+            "Tiene_Ticket",
+            "Diagnostico_IA"
         ]
-    })
+    ].copy()
+
+
+    priorizacion = priorizacion.sort_values(
+        "Riesgo_IA",
+        ascending=False
+    )
+
 
     st.dataframe(
-        detalle,
+        priorizacion,
         use_container_width=True,
         hide_index=True
     )
 
 
-with c2:
+    # --------------------------------------------------------
+    # DISTRIBUCIÓN RIESGO
+    # --------------------------------------------------------
 
-    st.subheader("🗺️ Mapa de Riesgo IA")
+    st.markdown(
+        "### 📈 Distribución del riesgo"
+    )
 
-    fig = px.scatter(
+
+    fig_riesgo = px.histogram(
         df,
-        x="Uso_CPU_Porcentaje",
-        y="Uso_RAM_Porcentaje",
+        x="Riesgo_IA",
         color="Estado",
-        size="Riesgo_IA",
-        hover_data=[
-            "ID_PC",
-            "Uso_Disco_Porcentaje",
-            "Riesgo_IA",
-            "Nivel_Riesgo",
-            "Tiene_Ticket"
-        ],
+        nbins=20,
         color_discrete_map={
-            "CRÍTICO": "#FF4B4B",
-            "ALTO": "#FFA726",
-            "MEDIO": "#FFD54F",
-            "ESTABLE": "#0068C9"
+            "CRÍTICO": "#dc2626",
+            "ALTO": "#f97316",
+            "MEDIO": "#eab308",
+            "ESTABLE": "#2563eb"
         }
     )
 
-    fig.update_layout(
-        xaxis_title="Uso CPU (%)",
-        yaxis_title="Uso RAM (%)",
-        height=500
+
+    fig_riesgo.update_layout(
+        height=400,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        xaxis_title="Riesgo IA (0 - 100)",
+        yaxis_title="Cantidad de equipos"
     )
 
+
     st.plotly_chart(
-        fig,
+        fig_riesgo,
         use_container_width=True
     )
 
 
 # ============================================================
-# 28. TABLA DE EQUIPOS PRIORIZADOS
+# TAB EVALUACIÓN
 # ============================================================
 
-st.markdown("### 🚨 Priorización de equipos")
+with tab_evaluacion:
 
-priorizacion = df[
-    [
-        "ID_PC",
-        "Estado",
-        "Nivel_Riesgo",
-        "Riesgo_IA",
-        "Uso_CPU_Porcentaje",
-        "Uso_RAM_Porcentaje",
-        "Uso_Disco_Porcentaje",
-        "Score_Tecnico",
-        "Tiene_Ticket",
-        "Diagnostico_IA"
-    ]
-].copy()
-
-
-priorizacion = priorizacion.sort_values(
-    "Riesgo_IA",
-    ascending=False
-)
-
-
-st.dataframe(
-    priorizacion,
-    use_container_width=True,
-    hide_index=True
-)
-
-
-# ============================================================
-# 29. EVALUACIÓN DEL MODELO
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "📈 Evaluación y Validación del Modelo de IA"
-)
-
-
-if modelo_supervisado is None:
-
-    st.warning(
-        f"""
-El sistema todavía no tiene suficiente historial etiquetado para entrenar
-un modelo supervisado confiable.
-
-Registros disponibles: {n_total}
-Críticos con ticket: {cantidad_criticos}
-Estables: {cantidad_estables}
-
-Mientras se recopilan más tickets, el sistema utiliza un modelo híbrido
-basado en detección de anomalías + reglas técnicas.
-"""
-    )
-
-else:
-
-    st.success(
-        f"""
-El modelo supervisado está activo.
-
-Registros totales: {n_total}
-Críticos: {cantidad_criticos}
-Estables: {cantidad_estables}
-
-Entrenamiento: {len(train_df)} registros
-Prueba: {len(test_df)} registros
-"""
+    st.markdown(
+        "## 🤖 Evaluación y validación de la IA"
     )
 
 
-# ============================================================
-# 30. EVALUACIÓN REAL SOBRE TEST
-# ============================================================
+    # --------------------------------------------------------
+    # ESTADO DEL ENTRENAMIENTO
+    # --------------------------------------------------------
 
-if modelo_supervisado is not None:
+    if modelo_supervisado is not None:
 
-    pred_test = modelo_supervisado.predict(
-        X_test
+        st.success(
+            f"""
+            **Modelo supervisado activo**
+
+            Registros totales: **{n_total}**
+
+            Registros críticos: **{cantidad_criticos}**
+
+            Registros estables: **{cantidad_estables}**
+
+            Entrenamiento: **{len(train_df)}**
+
+            Prueba: **{len(test_df)}**
+            """
+        )
+
+    else:
+
+        st.warning(
+            f"""
+            **Modelo supervisado todavía no disponible.**
+
+            Registros actuales: **{n_total}**
+
+            Críticos con ticket: **{cantidad_criticos}**
+
+            Estables: **{cantidad_estables}**
+
+            Se necesitan al menos 20 registros y suficientes
+            ejemplos de ambas clases para entrenar una clasificación
+            supervisada confiable.
+
+            Mientras tanto, la plataforma utiliza Isolation Forest
+            + reglas técnicas.
+            """
+        )
+
+
+    # --------------------------------------------------------
+    # EVALUACIÓN
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 🎯 Calidad de clasificación"
     )
 
-    y_test_real = test_df["Clase_Real"].values
 
-    y_test_pred = pred_test
+    if modelo_supervisado is not None:
 
-    acc = accuracy_score(
+        pred_test = (
+            modelo_supervisado
+            .predict(X_test)
+        )
+
+        y_pred_evaluacion = pred_test
+
+        tipo_modelo = (
+            "Random Forest supervisado"
+        )
+
+    else:
+
+        # Evaluación preliminar mediante Isolation Forest
+        # para conservar las métricas visibles incluso
+        # cuando aún no existe suficiente historial.
+
+        pred_test_anomalia = (
+            modelo_anomalia
+            .predict(X_test)
+        )
+
+        y_pred_evaluacion = np.where(
+            pred_test_anomalia == -1,
+            "CRÍTICO",
+            "ESTABLE"
+        )
+
+        tipo_modelo = (
+            "Isolation Forest — evaluación preliminar"
+        )
+
+
+    # --------------------------------------------------------
+    # Las 4 métricas SIEMPRE EXISTEN
+    # --------------------------------------------------------
+
+    accuracy = accuracy_score(
         y_test_real,
-        y_test_pred
+        y_pred_evaluacion
     )
 
-    prec = precision_score(
+
+    precision = precision_score(
         y_test_real,
-        y_test_pred,
+        y_pred_evaluacion,
         pos_label="CRÍTICO",
         zero_division=0
     )
 
-    rec = recall_score(
+
+    recall = recall_score(
         y_test_real,
-        y_test_pred,
+        y_pred_evaluacion,
         pos_label="CRÍTICO",
         zero_division=0
     )
+
 
     f1 = f1_score(
         y_test_real,
-        y_test_pred,
+        y_pred_evaluacion,
         pos_label="CRÍTICO",
         zero_division=0
     )
 
 
-    m1, m2, m3, m4 = st.columns(4)
+    # --------------------------------------------------------
+    # CUADRO DE 4 MÉTRICAS
+    # --------------------------------------------------------
 
-    m1.metric(
-        "Accuracy",
-        f"{acc:.2%}"
+    metric1, metric2, metric3, metric4 = st.columns(4)
+
+
+    metric1.metric(
+        "🎯 Accuracy",
+        f"{accuracy:.2%}"
     )
 
-    m2.metric(
-        "Precision CRÍTICO",
-        f"{prec:.2%}"
+
+    metric2.metric(
+        "🎯 Precision",
+        f"{precision:.2%}"
     )
 
-    m3.metric(
-        "Recall CRÍTICO",
-        f"{rec:.2%}"
+
+    metric3.metric(
+        "🎯 Recall",
+        f"{recall:.2%}"
     )
 
-    m4.metric(
-        "F1-Score CRÍTICO",
+
+    metric4.metric(
+        "🎯 F1-Score",
         f"{f1:.2%}"
     )
 
 
+    st.caption(
+        f"Método evaluado: **{tipo_modelo}**"
+    )
+
+
+    if modelo_supervisado is None:
+
+        st.info(
+            "Estas métricas son preliminares porque todavía no hay "
+            "suficiente historial etiquetado para entrenar Random Forest. "
+            "Cuando aumenten los tickets reales, la evaluación "
+            "supervisada será más representativa."
+        )
+
+
     # --------------------------------------------------------
-    # Matriz + reporte
+    # INTERPRETACIÓN DE MÉTRICAS
     # --------------------------------------------------------
 
-    col_cm, col_rep = st.columns([1, 1])
+    st.markdown(
+        "### 📖 Interpretación"
+    )
+
+
+    i1, i2, i3, i4 = st.columns(4)
+
+
+    i1.markdown(
+        """
+        **Accuracy**
+
+        Porcentaje total de predicciones correctas.
+        """
+    )
+
+
+    i2.markdown(
+        """
+        **Precision**
+
+        De los equipos que la IA marcó como críticos,
+        cuántos realmente fueron críticos.
+        """
+    )
+
+
+    i3.markdown(
+        """
+        **Recall**
+
+        De los equipos realmente críticos,
+        cuántos logró detectar la IA.
+        """
+    )
+
+
+    i4.markdown(
+        """
+        **F1-Score**
+
+        Equilibrio entre Precision y Recall.
+        """
+    )
+
+
+    # --------------------------------------------------------
+    # MATRIZ Y REPORTE
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 🔢 Matriz de confusión y reporte"
+    )
+
+
+    col_cm, col_rep = st.columns(
+        [1, 1]
+    )
+
 
     labels = [
         "CRÍTICO",
@@ -1394,19 +1869,17 @@ if modelo_supervisado is not None:
 
     with col_cm:
 
-        st.markdown(
-            "**Matriz de Confusión**"
-        )
-
         cm = confusion_matrix(
             y_test_real,
-            y_test_pred,
+            y_pred_evaluacion,
             labels=labels
         )
 
+
         fig_cm, ax = plt.subplots(
-            figsize=(5, 4)
+            figsize=(6, 4.5)
         )
+
 
         sns.heatmap(
             cm,
@@ -1418,13 +1891,19 @@ if modelo_supervisado is not None:
             yticklabels=labels
         )
 
+
         ax.set_xlabel(
             "Predicción IA"
         )
 
         ax.set_ylabel(
-            "Realidad (Tickets)"
+            "Realidad"
         )
+
+        ax.set_title(
+            "Matriz de Confusión"
+        )
+
 
         st.pyplot(
             fig_cm
@@ -1433,17 +1912,14 @@ if modelo_supervisado is not None:
 
     with col_rep:
 
-        st.markdown(
-            "**Reporte de Clasificación**"
-        )
-
         reporte = classification_report(
             y_test_real,
-            y_test_pred,
+            y_pred_evaluacion,
             labels=labels,
             output_dict=True,
             zero_division=0
         )
+
 
         reporte_df = (
             pd.DataFrame(reporte)
@@ -1451,68 +1927,93 @@ if modelo_supervisado is not None:
             .round(3)
         )
 
+
         st.dataframe(
             reporte_df,
             use_container_width=True
         )
 
 
-    # ========================================================
-    # 31. ROC / AUC
-    # ========================================================
+    # --------------------------------------------------------
+    # ROC / AUC
+    # --------------------------------------------------------
 
     st.markdown(
-        "### 📊 Curva ROC + AUC"
+        "### 📈 Curva ROC y AUC"
     )
 
-    prob_test = modelo_supervisado.predict_proba(
-        X_test
-    )
 
-    clases_test = list(
-        modelo_supervisado.classes_
-    )
+    if modelo_supervisado is not None:
 
-    if "CRÍTICO" in clases_test:
-
-        idx_critico = clases_test.index(
-            "CRÍTICO"
+        probabilidades_test = (
+            modelo_supervisado
+            .predict_proba(X_test)
         )
 
-        score_test = prob_test[
-            :, idx_critico
-        ]
+        clases_test = list(
+            modelo_supervisado.classes_
+        )
 
-        y_test_bin = (
-            y_test_real == "CRÍTICO"
-        ).astype(int)
 
-        if len(np.unique(y_test_bin)) == 2:
+        if (
+            "CRÍTICO" in clases_test
+            and len(
+                np.unique(y_test_real)
+            ) == 2
+        ):
+
+            indice_critico_test = (
+                clases_test.index(
+                    "CRÍTICO"
+                )
+            )
+
+
+            score_roc = (
+                probabilidades_test[
+                    :,
+                    indice_critico_test
+                ]
+            )
+
+
+            y_binario = (
+                y_test_real ==
+                "CRÍTICO"
+            ).astype(int)
+
 
             fpr, tpr, _ = roc_curve(
-                y_test_bin,
-                score_test
+                y_binario,
+                score_roc
             )
+
 
             auc_score = auc(
                 fpr,
                 tpr
             )
 
+
             fig_roc = go.Figure()
+
 
             fig_roc.add_trace(
                 go.Scatter(
                     x=fpr,
                     y=tpr,
                     mode="lines",
-                    name=f"Modelo (AUC = {auc_score:.3f})",
+                    name=(
+                        f"Random Forest "
+                        f"(AUC = {auc_score:.3f})"
+                    ),
                     line=dict(
-                        color="#0068C9",
+                        color="#2563eb",
                         width=3
                     )
                 )
             )
+
 
             fig_roc.add_trace(
                 go.Scatter(
@@ -1521,156 +2022,191 @@ if modelo_supervisado is not None:
                     mode="lines",
                     name="Azar (AUC = 0.50)",
                     line=dict(
-                        color="gray",
+                        color="#94a3b8",
                         dash="dash"
                     )
                 )
             )
 
+
             fig_roc.update_layout(
-                xaxis_title="Tasa de Falsos Positivos",
-                yaxis_title="Tasa de Verdaderos Positivos",
-                height=400
+                height=420,
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                xaxis_title="Tasa de falsos positivos",
+                yaxis_title="Tasa de verdaderos positivos"
             )
+
 
             st.plotly_chart(
                 fig_roc,
                 use_container_width=True
             )
 
+
             st.metric(
                 "AUC Score",
                 f"{auc_score:.3f}"
             )
 
+
         else:
 
             st.info(
-                "El conjunto de prueba no contiene las dos clases necesarias para calcular ROC/AUC."
+                "No hay suficientes clases representadas "
+                "en el conjunto de prueba para calcular ROC/AUC."
             )
 
 
-# ============================================================
-# 32. DISTRIBUCIÓN DE RIESGO
-# ============================================================
+    else:
 
-st.markdown(
-    "### 📊 Distribución del Puntaje de Riesgo"
-)
-
-fig_hist = px.histogram(
-    df,
-    x="Riesgo_IA",
-    color="Estado",
-    nbins=20,
-    color_discrete_map={
-        "CRÍTICO": "#FF4B4B",
-        "ALTO": "#FFA726",
-        "MEDIO": "#FFD54F",
-        "ESTABLE": "#0068C9"
-    }
-)
-
-fig_hist.update_layout(
-    xaxis_title="Riesgo IA (0-100)",
-    yaxis_title="Cantidad de equipos"
-)
-
-st.plotly_chart(
-    fig_hist,
-    use_container_width=True
-)
+        st.info(
+            "ROC/AUC supervisado estará disponible cuando "
+            "existan suficientes tickets históricos de ambas clases."
+        )
 
 
-# ============================================================
-# 33. SCORE DE ANOMALÍA
-# ============================================================
+    # --------------------------------------------------------
+    # FEATURE IMPORTANCE
+    # --------------------------------------------------------
 
-st.markdown(
-    "### 🔬 Distribución del Puntaje de Anomalía"
-)
+    if modelo_supervisado is not None:
 
-fig_anomalia = px.histogram(
-    df,
-    x="Score_Anomalia" if "Score_Anomalia" in df.columns else anomaly_score,
-    color="Clase_Real",
-    barmode="overlay",
-    nbins=20,
-    color_discrete_map={
-        "CRÍTICO": "#FF4B4B",
-        "ESTABLE": "#0068C9"
-    }
-)
-
-st.plotly_chart(
-    fig_anomalia,
-    use_container_width=True
-)
+        st.markdown(
+            "### 🧠 Importancia de las variables"
+        )
 
 
-# ============================================================
-# 34. GUARDAR SCORE DE ANOMALÍA EN DF
-# ============================================================
-
-# Se hace después porque no afecta al modelo.
-
-df["Score_Anomalia"] = anomaly_score
-
-
-# ============================================================
-# 35. SENSIBILIDAD DE CONTAMINATION
-# ============================================================
-
-st.markdown(
-    "### ⚙️ Sensibilidad del parámetro `contamination`"
-)
-
-st.write(
-    "Esta prueba permite observar cómo cambia la detección de anomalías "
-    "cuando se modifica la proporción esperada de valores anómalos."
-)
+        importancia = pd.DataFrame(
+            {
+                "Variable": features,
+                "Importancia": (
+                    modelo_supervisado
+                    .feature_importances_
+                )
+            }
+        ).sort_values(
+            "Importancia",
+            ascending=False
+        )
 
 
-valores_prueba = sorted(
-    set(
-        [
-            0.05,
-            0.10,
-            0.15,
-            0.20,
-            CONTAMINATION
-        ]
-    )
-)
+        fig_importancia = px.bar(
+            importancia,
+            x="Importancia",
+            y="Variable",
+            orientation="h"
+        )
 
 
-resultados_contamination = []
+        fig_importancia.update_layout(
+            height=520,
+            plot_bgcolor="white",
+            paper_bgcolor="white"
+        )
 
 
-for c in valores_prueba:
+        st.plotly_chart(
+            fig_importancia,
+            use_container_width=True
+        )
 
-    if c <= 0 or c >= 0.5:
-        continue
 
-    modelo_temp = IsolationForest(
-        n_estimators=250,
-        contamination=c,
-        random_state=42,
-        n_jobs=-1
+    # --------------------------------------------------------
+    # DISTRIBUCIÓN ANOMALÍA
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 🔬 Distribución del puntaje de anomalía"
     )
 
-    modelo_temp.fit(
-        X_train
+
+    fig_hist = px.histogram(
+        df,
+        x="Score_Anomalia",
+        color="Clase_Real",
+        barmode="overlay",
+        nbins=20,
+        color_discrete_map={
+            "CRÍTICO": "#dc2626",
+            "ESTABLE": "#2563eb"
+        }
     )
 
-    pred_temp = modelo_temp.predict(
-        X_test
+
+    fig_hist.update_layout(
+        height=420,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        xaxis_title="Puntaje de anomalía",
+        yaxis_title="Cantidad"
     )
 
-    # Solo se compara contra tickets cuando existen
-    # ambas clases y test es válido.
 
-    if len(np.unique(y_test_real)) >= 2:
+    st.plotly_chart(
+        fig_hist,
+        use_container_width=True
+    )
+
+
+    # ========================================================
+    # CONTAMINATION
+    # ========================================================
+
+    st.markdown(
+        "### ⚙️ Sensibilidad del parámetro `contamination`"
+    )
+
+
+    st.write(
+        "Esta prueba compara cómo cambia la detección de anomalías "
+        "cuando modificamos la proporción esperada de equipos anómalos."
+    )
+
+
+    valores_prueba = sorted(
+        set(
+            [
+                0.05,
+                0.10,
+                0.15,
+                0.20,
+                CONTAMINATION
+            ]
+        )
+    )
+
+
+    resultados_contamination = []
+
+
+    # IMPORTANTE:
+    # y_test_real SIEMPRE existe porque se creó antes.
+    # Esto corrige exactamente el error que te apareció.
+
+    for c in valores_prueba:
+
+        if c <= 0 or c >= 0.50:
+            continue
+
+
+        modelo_temp = IsolationForest(
+            n_estimators=250,
+            contamination=c,
+            random_state=42,
+            n_jobs=-1
+        )
+
+
+        modelo_temp.fit(
+            X_train
+        )
+
+
+        pred_temp = modelo_temp.predict(
+            X_test
+        )
+
 
         pred_temp_label = np.where(
             pred_temp == -1,
@@ -1678,83 +2214,159 @@ for c in valores_prueba:
             "ESTABLE"
         )
 
-        acc_temp = accuracy_score(
+
+        accuracy_temp = accuracy_score(
             y_test_real,
             pred_temp_label
         )
 
-    else:
 
-        acc_temp = np.nan
+        precision_temp = precision_score(
+            y_test_real,
+            pred_temp_label,
+            pos_label="CRÍTICO",
+            zero_division=0
+        )
 
 
-    resultados_contamination.append(
-        {
-            "contamination": c,
-            "accuracy": acc_temp,
-            "usado_actualmente": (
-                "Sí"
-                if abs(c - CONTAMINATION) < 0.0001
-                else ""
-            )
-        }
+        recall_temp = recall_score(
+            y_test_real,
+            pred_temp_label,
+            pos_label="CRÍTICO",
+            zero_division=0
+        )
+
+
+        f1_temp = f1_score(
+            y_test_real,
+            pred_temp_label,
+            pos_label="CRÍTICO",
+            zero_division=0
+        )
+
+
+        resultados_contamination.append(
+            {
+                "Contamination": c,
+                "Accuracy": accuracy_temp,
+                "Precision": precision_temp,
+                "Recall": recall_temp,
+                "F1-Score": f1_temp,
+                "Configuración actual": (
+                    "✅ ACTUAL"
+                    if abs(
+                        c - CONTAMINATION
+                    ) < 0.0001
+                    else ""
+                )
+            }
+        )
+
+
+    resultados_df = pd.DataFrame(
+        resultados_contamination
     )
 
 
-st.dataframe(
-    pd.DataFrame(
-        resultados_contamination
-    ),
-    use_container_width=True,
-    hide_index=True
-)
+    if not resultados_df.empty:
+
+        resultados_mostrar = resultados_df.copy()
+
+
+        for columna in [
+            "Accuracy",
+            "Precision",
+            "Recall",
+            "F1-Score"
+        ]:
+
+            resultados_mostrar[
+                columna
+            ] = (
+                resultados_mostrar[
+                    columna
+                ] * 100
+            ).round(2).astype(str) + "%"
+
+
+        st.dataframe(
+            resultados_mostrar,
+            use_container_width=True,
+            hide_index=True
+        )
 
 
 # ============================================================
-# 36. EXPLICACIÓN GENERAL DEL SISTEMA
+# INVENTARIO
+# ============================================================
+
+with tab_inventario:
+
+    st.markdown(
+        "## 🖥️ Inventario técnico completo"
+    )
+
+
+    st.caption(
+        "Información recibida directamente desde Supabase "
+        "y enriquecida con los cálculos de la IA."
+    )
+
+
+    # Columnas más importantes primero
+    columnas_prioritarias = [
+        "ID_PC",
+        "Fecha_Hora",
+        "Usuario",
+        "Modelo",
+        "Serial",
+        "Estado",
+        "Nivel_Riesgo",
+        "Riesgo_IA",
+        "Score_Tecnico",
+        "Score_Anomalia",
+        "Uso_CPU_Porcentaje",
+        "Uso_RAM_Porcentaje",
+        "Uso_Disco_Porcentaje",
+        "CPU_Normalizado_Porcentaje",
+        "Porcentaje_Bateria",
+        "Tiene_Ticket",
+        "Diagnostico_IA"
+    ]
+
+
+    columnas_existentes = [
+        c for c in columnas_prioritarias
+        if c in df.columns
+    ]
+
+
+    inventario = df[
+        columnas_existentes
+    ].copy()
+
+
+    inventario = inventario.sort_values(
+        "Riesgo_IA",
+        ascending=False
+    )
+
+
+    st.dataframe(
+        inventario,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+# ============================================================
+# PIE
 # ============================================================
 
 st.divider()
 
-st.subheader(
-    "🤖 Cómo toma decisiones la IA"
-)
-
-st.write(
-    """
-El sistema utiliza tres fuentes de información para determinar el riesgo:
-
-1. **Modelo supervisado:** aprende de los equipos que históricamente
-   fueron reportados mediante tickets.
-
-2. **Detección de anomalías:** identifica equipos cuyo comportamiento
-   se aleja significativamente del comportamiento normal de la flota.
-
-3. **Reglas técnicas:** analiza niveles críticos de CPU, RAM, disco,
-   CPU normalizada y tendencias recientes.
-
-El resultado de estos componentes se combina en un puntaje de
-riesgo de 0 a 100. Después se clasifica el equipo como ESTABLE,
-MEDIO, ALTO o CRÍTICO.
-
-Esto permite que la decisión no dependa únicamente de una variable
-individual.
-"""
-)
-
-
-# ============================================================
-# 37. INVENTARIO COMPLETO
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "🖥️ Inventario Técnico Completo"
-)
-
-st.dataframe(
-    df,
-    use_container_width=True,
-    hide_index=True
+st.caption(
+    "AI-FleetMonitor Pro • Monitoreo inteligente • "
+    "Detección de anomalías • Clasificación de riesgo • "
+    "Diagnóstico técnico"
 )
