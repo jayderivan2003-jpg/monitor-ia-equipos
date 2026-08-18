@@ -5,8 +5,12 @@ import streamlit as st
 
 from supabase import create_client
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
-from sklearn.model_selection import train_test_split, StratifiedKFold, cross_validate
-from sklearn.metrics import make_scorer
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, GroupKFold
+try:
+    from sklearn.model_selection import StratifiedGroupKFold
+except ImportError:
+    StratifiedGroupKFold = None
 from sklearn.metrics import (
     confusion_matrix,
     accuracy_score,
@@ -20,6 +24,7 @@ from sklearn.metrics import (
     auc,
     roc_auc_score,
     average_precision_score,
+    make_scorer,
 )
 
 import plotly.express as px
@@ -39,254 +44,69 @@ st.set_page_config(
 
 
 # ============================================================
-# ESTILO PROFESIONAL - SIN ICONOS
+# ESTILO
 # ============================================================
 
 st.markdown(
     """
     <style>
-        .stApp {
-            background: #f4f6f9;
-            color: #172033;
-        }
-
-        [data-testid="stHeader"] {
-            background: rgba(255, 255, 255, 0.96);
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        section[data-testid="stSidebar"] {
-            background: #ffffff;
-            border-right: 1px solid #e2e8f0;
-        }
-
-        .block-container {
-            max-width: 1500px;
-            padding-top: 1.7rem;
-            padding-bottom: 3rem;
-        }
+        .stApp { background: #f4f6f9; color: #172033; }
+        [data-testid="stHeader"] { background: #ffffff; border-bottom: 1px solid #e2e8f0; }
+        section[data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid #e2e8f0; }
+        .block-container { max-width: 1500px; padding-top: 1.5rem; padding-bottom: 3rem; }
 
         .app-header {
             background: linear-gradient(110deg, #0f172a 0%, #173a72 100%);
-            border-radius: 16px;
-            padding: 25px 30px;
-            margin-bottom: 22px;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+            border-radius: 16px; padding: 25px 30px; margin-bottom: 22px;
+            box-shadow: 0 8px 24px rgba(15,23,42,.10);
         }
+        .app-header-title { color: #fff; font-size: 30px; font-weight: 700; margin: 0; }
+        .app-header-subtitle { color: #dbe4f0; font-size: 14px; margin-top: 7px; }
 
-        .app-header-title {
-            color: #ffffff;
-            font-size: 30px;
-            font-weight: 700;
-            letter-spacing: -0.3px;
-            margin: 0;
-        }
+        .section-title { color: #172033; font-size: 21px; font-weight: 700; margin: 16px 0 10px; }
+        .section-note { color: #64748b; font-size: 13px; margin-bottom: 14px; }
+        .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; box-shadow: 0 4px 14px rgba(15,23,42,.045); }
+        .status-card { border-radius: 13px; padding: 16px 18px; border: 1px solid; margin-bottom: 15px; }
+        .status-critical { background:#fff1f2; border-color:#fecdd3; color:#9f1239; }
+        .status-high { background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
+        .status-medium { background:#fefce8; border-color:#fde68a; color:#854d0e; }
+        .status-stable { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
+        .small-muted { color:#64748b; font-size:12px; }
 
-        .app-header-subtitle {
-            color: #cbd5e1;
-            font-size: 14px;
-            margin-top: 6px;
-        }
+        [data-testid="stMetric"] { background:#fff; border:1px solid #dbe3ee; border-radius:12px; padding:14px; box-shadow:0 3px 10px rgba(15,23,42,.04); }
+        [data-testid="stMetricLabel"] { color:#475569 !important; }
+        [data-testid="stMetricValue"] { color:#172033 !important; }
+        [data-testid="stMetricDelta"] { color:#475569 !important; }
 
-        .section-title {
-            color: #172033;
-            font-size: 21px;
-            font-weight: 700;
-            margin-top: 10px;
-            margin-bottom: 10px;
-        }
+        .stButton > button { background:#ffffff !important; color:#172033 !important; border:1px solid #cbd5e1 !important; border-radius:9px !important; font-weight:600 !important; }
+        .stButton > button:hover { border-color:#2563eb !important; color:#2563eb !important; }
+        button[kind="primary"] { background:#1e3a8a !important; color:#ffffff !important; border-color:#1e3a8a !important; }
 
-        .section-note {
-            color: #64748b;
-            font-size: 13px;
-            margin-bottom: 16px;
-        }
+        section[data-testid="stSidebar"] label,
+        section[data-testid="stSidebar"] p,
+        section[data-testid="stSidebar"] div,
+        section[data-testid="stSidebar"] span { color:#172033 !important; }
+        section[data-testid="stSidebar"] textarea,
+        section[data-testid="stSidebar"] input,
+        section[data-testid="stSidebar"] [role="combobox"] { color:#172033 !important; }
 
-        .panel {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            padding: 18px;
-            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.045);
-        }
+        [data-testid="stTabs"] button { color:#334155 !important; font-weight:600 !important; }
+        [data-testid="stTabs"] button[aria-selected="true"] { color:#1e3a8a !important; }
+        .stCaption, .stMarkdown, p { color:#334155; }
 
-        .status-card {
-            border-radius: 13px;
-            padding: 17px 19px;
-            border: 1px solid;
-            margin-bottom: 15px;
-        }
-
-        .status-critical {
-            background: #fff5f5;
-            border-color: #fecaca;
-            color: #991b1b;
-        }
-
-        .status-high {
-            background: #fff8ed;
-            border-color: #fed7aa;
-            color: #9a3412;
-        }
-
-        .status-medium {
-            background: #fffdf0;
-            border-color: #fde68a;
-            color: #854d0e;
-        }
-
-        .status-stable {
-            background: #f3fbf6;
-            border-color: #bbf7d0;
-            color: #166534;
-        }
-
-        .status-main {
-            font-size: 19px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-
-        .status-sub {
-            font-size: 13px;
-            opacity: 0.9;
-        }
-
-        .mini-card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 14px 15px;
-            min-height: 92px;
-        }
-
-        .mini-label {
-            color: #64748b;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .mini-value {
-            color: #172033;
-            font-size: 24px;
-            font-weight: 750;
-            margin-top: 5px;
-        }
-
-        .mini-help {
-            color: #94a3b8;
-            font-size: 11px;
-            margin-top: 2px;
-        }
-
-        .evaluation-band {
-            background: #ffffff;
-            border: 1px solid #dbe4ef;
-            border-left: 4px solid #2563eb;
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin-bottom: 18px;
-        }
-
-        .evaluation-band-title {
-            font-weight: 700;
-            color: #172033;
-        }
-
-        .evaluation-band-text {
-            font-size: 13px;
-            color: #64748b;
-            margin-top: 4px;
-        }
-
-        .metric-box {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 13px;
-            padding: 14px 16px;
-            box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
-        }
-
-        .metric-label {
-            color: #64748b;
-            font-size: 12px;
-            font-weight: 650;
-        }
-
-        .metric-value {
-            color: #172033;
-            font-size: 25px;
-            font-weight: 750;
-            margin-top: 4px;
-        }
-
-        .metric-desc {
-            color: #94a3b8;
-            font-size: 11px;
-            margin-top: 3px;
-        }
-
-        .interpretation {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 14px;
-            height: 100%;
-        }
-
-        .interpretation-title {
-            color: #172033;
-            font-weight: 700;
-            font-size: 13px;
-        }
-
-        .interpretation-text {
-            color: #64748b;
-            font-size: 12px;
-            line-height: 1.45;
-            margin-top: 5px;
-        }
-
-        .stButton > button {
-            border-radius: 9px;
-            border: 1px solid #cbd5e1;
-            font-weight: 600;
-        }
-
-        [data-testid="stMetric"] {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 12px 14px;
-        }
-
-        [data-testid="stDataFrame"] {
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .small-muted {
-            color: #64748b;
-            font-size: 12px;
-        }
+        [data-testid="stDataFrame"] { border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
     </style>
     """,
     unsafe_allow_html=True,
 )
-
-
-# ============================================================
-# CABECERA
-# ============================================================
 
 st.markdown(
     """
     <div class="app-header">
         <div class="app-header-title">AI-FleetMonitor Pro</div>
         <div class="app-header-subtitle">
-            Monitoreo de hardware, detección de anomalías, clasificación de riesgo
-            y evaluación del modelo de inteligencia artificial.
+            Monitoreo de hardware, deteccion de anomalias, clasificacion de riesgo,
+            entrenamiento y evaluacion del modelo de inteligencia artificial.
         </div>
     </div>
     """,
@@ -298,206 +118,248 @@ st.markdown(
 # SUPABASE
 # ============================================================
 
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+except Exception:
+    st.error("No se encontraron SUPABASE_URL y SUPABASE_ANON_KEY en st.secrets.")
+    st.stop()
 
 supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 
+# ============================================================
+# CARGA DE DATOS
+# ============================================================
+
 @st.cache_data(ttl=60)
-def cargar_datos(_cache_bust):
-    resultado = supabase.table("equipos").select("*").execute()
-    df = pd.DataFrame(resultado.data)
-
-    if df.empty:
-        return df
-
-    df = df.rename(
-        columns={
-            "id_pc": "ID_PC",
-            "fecha_hora": "Fecha_Hora",
-            "uso_cpu_porcentaje": "Uso_CPU_Porcentaje",
-            "uso_ram_porcentaje": "Uso_RAM_Porcentaje",
-            "cpu_normalizado_porcentaje": "CPU_Normalizado_Porcentaje",
-            "ticket_usuario": "Ticket_Usuario",
-            "porcentaje_bateria": "Porcentaje_Bateria",
-            "uso_disco_porcentaje": "Uso_Disco_Porcentaje",
-            "usuario": "Usuario",
-            "modelo": "Modelo",
-            "serial": "Serial",
-        }
+def cargar_historial(_cache_bust):
+    """Carga todas las mediciones históricas. Es la fuente para entrenar la IA."""
+    resultado = (
+        supabase.table("mediciones_equipos")
+        .select("*")
+        .order("fecha_hora", desc=False)
+        .execute()
     )
-
-    columnas_numericas = [
-        "Uso_CPU_Porcentaje",
-        "Uso_RAM_Porcentaje",
-        "CPU_Normalizado_Porcentaje",
-        "Porcentaje_Bateria",
-        "Uso_Disco_Porcentaje",
-    ]
-
-    for columna in columnas_numericas:
-        if columna not in df.columns:
-            df[columna] = np.nan
-        df[columna] = pd.to_numeric(df[columna], errors="coerce")
-        df[columna] = df[columna].clip(0, 100)
-
-    if "Fecha_Hora" in df.columns:
-        df["Fecha_Hora"] = pd.to_datetime(df["Fecha_Hora"], errors="coerce")
-
-    if "Ticket_Usuario" not in df.columns:
-        df["Ticket_Usuario"] = np.nan
-
-    ticket_limpio = df["Ticket_Usuario"].fillna("").astype(str).str.strip()
-    df["Tiene_Ticket"] = ticket_limpio.ne("")
-    df["Clase_Real"] = np.where(df["Tiene_Ticket"], "CRÍTICO", "ESTABLE")
-
+    df = pd.DataFrame(resultado.data)
     return df
 
 
-df = cargar_datos(int(time.time() // 60))
+@st.cache_data(ttl=60)
+def cargar_equipos(_cache_bust):
+    """Carga el inventario actual. Sirve para mantener los datos de equipos/tickets."""
+    resultado = supabase.table("equipos").select("*").execute()
+    df = pd.DataFrame(resultado.data)
+    return df
+
+
+try:
+    historial = cargar_historial(int(time.time() // 60))
+except Exception as exc:
+    st.error(f"No fue posible leer mediciones_equipos: {exc}")
+    st.stop()
+
+try:
+    equipos_bd = cargar_equipos(int(time.time() // 60))
+except Exception:
+    equipos_bd = pd.DataFrame()
 
 if st.button("Actualizar datos"):
     st.cache_data.clear()
     st.rerun()
 
-if df.empty:
-    st.warning(
-        "Todavía no hay información disponible en Supabase. "
-        "Ejecuta agente_monitor.py en al menos un equipo."
-    )
+if historial.empty:
+    st.warning("La tabla mediciones_equipos esta vacia. Ejecuta generar_20_equipos.py antes de entrenar la IA.")
     st.stop()
 
 
 # ============================================================
-# PREPROCESAMIENTO
+# NORMALIZACION DE NOMBRES
 # ============================================================
 
-columnas_base = [
+historial = historial.rename(
+    columns={
+        "id": "ID_Medicion",
+        "id_pc": "ID_PC",
+        "fecha_hora": "Fecha_Hora",
+        "uso_cpu_porcentaje": "Uso_CPU_Porcentaje",
+        "uso_ram_porcentaje": "Uso_RAM_Porcentaje",
+        "cpu_normalizado_porcentaje": "CPU_Normalizado_Porcentaje",
+        "ticket_usuario": "Ticket_Usuario",
+        "porcentaje_bateria": "Porcentaje_Bateria",
+        "uso_disco_porcentaje": "Uso_Disco_Porcentaje",
+        "usuario": "Usuario",
+        "modelo": "Modelo",
+        "serial": "Serial",
+        "temperatura_cpu": "Temperatura_CPU",
+        "procesos_activos": "Procesos_Activos",
+        "estado_tecnico": "Estado_Tecnico",
+        "severidad": "Severidad",
+    }
+)
+
+if "ID_PC" not in historial.columns:
+    historial["ID_PC"] = "SIN_ID"
+
+historial["ID_PC"] = historial["ID_PC"].astype(str)
+
+if "Fecha_Hora" in historial.columns:
+    historial["Fecha_Hora"] = pd.to_datetime(historial["Fecha_Hora"], errors="coerce", utc=True)
+
+numeric_cols = [
     "Uso_CPU_Porcentaje",
     "Uso_RAM_Porcentaje",
     "CPU_Normalizado_Porcentaje",
     "Porcentaje_Bateria",
     "Uso_Disco_Porcentaje",
+    "Temperatura_CPU",
+    "Procesos_Activos",
 ]
 
-for columna in columnas_base:
-    mediana = df[columna].median()
+for col in numeric_cols:
+    if col not in historial.columns:
+        historial[col] = np.nan
+    historial[col] = pd.to_numeric(historial[col], errors="coerce")
+
+for col in [
+    "Uso_CPU_Porcentaje",
+    "Uso_RAM_Porcentaje",
+    "CPU_Normalizado_Porcentaje",
+    "Porcentaje_Bateria",
+    "Uso_Disco_Porcentaje",
+]:
+    historial[col] = historial[col].clip(0, 100)
+
+if "Ticket_Usuario" not in historial.columns:
+    historial["Ticket_Usuario"] = None
+
+if "Estado_Tecnico" not in historial.columns:
+    historial["Estado_Tecnico"] = None
+
+if "Severidad" not in historial.columns:
+    historial["Severidad"] = None
+
+historial["Tiene_Ticket"] = (
+    historial["Ticket_Usuario"].fillna("").astype(str).str.strip().ne("")
+)
+
+
+# ============================================================
+# ETIQUETAS: EL MODELO APRENDE DEL ESTADO TECNICO, NO DEL TICKET
+# ============================================================
+
+def estado_tecnico_reglas(row):
+    cpu = float(row["Uso_CPU_Porcentaje"])
+    ram = float(row["Uso_RAM_Porcentaje"])
+    disco = float(row["Uso_Disco_Porcentaje"])
+
+    if cpu >= 90 or ram >= 90 or disco >= 95:
+        return "CRITICO"
+    if cpu >= 85 or ram >= 85 or disco >= 90:
+        return "ALERTA"
+    if cpu >= 60 or ram >= 60 or disco >= 60:
+        return "REGULAR"
+    return "ESTABLE"
+
+
+historial["Estado_Tecnico"] = historial.apply(
+    lambda row: row["Estado_Tecnico"]
+    if isinstance(row["Estado_Tecnico"], str) and row["Estado_Tecnico"].strip()
+    else estado_tecnico_reglas(row),
+    axis=1,
+)
+
+historial["Estado_Tecnico"] = (
+    historial["Estado_Tecnico"]
+    .astype(str)
+    .str.upper()
+    .replace({"CRÍTICO": "CRITICO"})
+)
+
+# Objetivo binario para las metricas clasicas del semillero:
+# CRITICO vs NO CRITICO.
+historial["Clase_Real"] = np.where(
+    historial["Estado_Tecnico"].eq("CRITICO"),
+    "CRÍTICO",
+    "ESTABLE",
+)
+
+
+# ============================================================
+# VARIABLES DERIVADAS E HISTORICAS
+# ============================================================
+
+historial = historial.sort_values(["ID_PC", "Fecha_Hora"], na_position="first").copy()
+
+for col in numeric_cols:
+    mediana = historial[col].median()
     if pd.isna(mediana):
         mediana = 0
-    df[columna] = df[columna].fillna(mediana).clip(0, 100)
+    historial[col] = historial[col].fillna(mediana)
 
-
-# ============================================================
-# VARIABLES DERIVADAS
-# ============================================================
-
-df["Presion_Recursos"] = df[
+historial["Presion_Recursos"] = historial[
     ["Uso_CPU_Porcentaje", "Uso_RAM_Porcentaje", "Uso_Disco_Porcentaje"]
 ].max(axis=1)
 
-df["Promedio_Recursos"] = df[
+historial["Promedio_Recursos"] = historial[
     ["Uso_CPU_Porcentaje", "Uso_RAM_Porcentaje", "Uso_Disco_Porcentaje"]
 ].mean(axis=1)
 
-df["CPU_RAM_Conjunta"] = (
-    df["Uso_CPU_Porcentaje"] * df["Uso_RAM_Porcentaje"] / 100
+historial["CPU_RAM_Conjunta"] = (
+    historial["Uso_CPU_Porcentaje"] * historial["Uso_RAM_Porcentaje"] / 100
 )
 
-df["Diferencia_CPU"] = (
-    df["CPU_Normalizado_Porcentaje"] - df["Uso_CPU_Porcentaje"]
+historial["Diferencia_CPU"] = (
+    historial["CPU_Normalizado_Porcentaje"] - historial["Uso_CPU_Porcentaje"]
 ).abs()
 
-df["Componentes_Saturados"] = (
-    (df["Uso_CPU_Porcentaje"] >= 85).astype(int)
-    + (df["Uso_RAM_Porcentaje"] >= 85).astype(int)
-    + (df["Uso_Disco_Porcentaje"] >= 90).astype(int)
+historial["CPU_Mala"] = (historial["Uso_CPU_Porcentaje"] >= 85).astype(int)
+historial["RAM_Mala"] = (historial["Uso_RAM_Porcentaje"] >= 85).astype(int)
+historial["Disco_Malo"] = (historial["Uso_Disco_Porcentaje"] >= 90).astype(int)
+historial["Recursos_Malos"] = historial[["CPU_Mala", "RAM_Mala", "Disco_Malo"]].sum(axis=1)
+
+historial["Estado_CPU_Tecnico"] = pd.cut(
+    historial["Uso_CPU_Porcentaje"],
+    bins=[-np.inf, 60, 85, np.inf],
+    labels=["BUENO", "REGULAR", "MALO"],
+    right=False,
+)
+
+historial["Estado_RAM_Tecnico"] = pd.cut(
+    historial["Uso_RAM_Porcentaje"],
+    bins=[-np.inf, 60, 85, np.inf],
+    labels=["BUENO", "REGULAR", "MALO"],
+    right=False,
+)
+
+# Persistencia y tendencia: diferencia frente a mediciones anteriores.
+historial["CPU_Anterior"] = historial.groupby("ID_PC")["Uso_CPU_Porcentaje"].shift(1)
+historial["RAM_Anterior"] = historial.groupby("ID_PC")["Uso_RAM_Porcentaje"].shift(1)
+historial["Disco_Anterior"] = historial.groupby("ID_PC")["Uso_Disco_Porcentaje"].shift(1)
+
+historial["Tendencia_CPU"] = (historial["Uso_CPU_Porcentaje"] - historial["CPU_Anterior"]).fillna(0)
+historial["Tendencia_RAM"] = (historial["Uso_RAM_Porcentaje"] - historial["RAM_Anterior"]).fillna(0)
+historial["Tendencia_Disco"] = (historial["Uso_Disco_Porcentaje"] - historial["Disco_Anterior"]).fillna(0)
+
+# Ventana movil de 5 mediciones.
+grouped = historial.groupby("ID_PC", group_keys=False)
+historial["CPU_Media_5"] = groupby_rolling = grouped["Uso_CPU_Porcentaje"].transform(lambda s: s.rolling(5, min_periods=1).mean())
+historial["RAM_Media_5"] = grouped["Uso_RAM_Porcentaje"].transform(lambda s: s.rolling(5, min_periods=1).mean())
+historial["Disco_Media_5"] = grouped["Uso_Disco_Porcentaje"].transform(lambda s: s.rolling(5, min_periods=1).mean())
+
+historial["CPU_Alta_5"] = grouped["Uso_CPU_Porcentaje"].transform(lambda s: s.rolling(5, min_periods=1).apply(lambda x: np.mean(x >= 85)))
+historial["RAM_Alta_5"] = grouped["Uso_RAM_Porcentaje"].transform(lambda s: s.rolling(5, min_periods=1).apply(lambda x: np.mean(x >= 85)))
+historial["Disco_Alto_5"] = grouped["Uso_Disco_Porcentaje"].transform(lambda s: s.rolling(5, min_periods=1).apply(lambda x: np.mean(x >= 90)))
+
+historial["Componentes_Saturados"] = (
+    (historial["Uso_CPU_Porcentaje"] >= 85).astype(int)
+    + (historial["Uso_RAM_Porcentaje"] >= 85).astype(int)
+    + (historial["Uso_Disco_Porcentaje"] >= 90).astype(int)
 )
 
 
 # ============================================================
-# GUIA TECNICA DE REFERENCIA
-# ============================================================
-# Esta capa NO reemplaza al modelo de ML. Sirve para que el sistema
-# conozca explícitamente qué comportamiento es bueno, regular o malo.
-#
-# CPU / RAM:
-#   0-59.99  = BUENO
-#   60-84.99 = REGULAR
-#   85-100   = MALO
-#
-# La clasificación final de IA sigue usando el modelo supervisado
-# cuando hay suficientes tickets, pero estas variables se incorporan
-# como evidencia técnica adicional.
-
-def clasificar_recurso(valor):
-    if valor < 60:
-        return "BUENO"
-    if valor < 85:
-        return "REGULAR"
-    return "MALO"
-
-
-df["Estado_CPU_Tecnico"] = df["Uso_CPU_Porcentaje"].apply(clasificar_recurso)
-df["Estado_RAM_Tecnico"] = df["Uso_RAM_Porcentaje"].apply(clasificar_recurso)
-
-df["CPU_Mala"] = (df["Uso_CPU_Porcentaje"] >= 85).astype(int)
-df["RAM_Mala"] = (df["Uso_RAM_Porcentaje"] >= 85).astype(int)
-df["Disco_Malo"] = (df["Uso_Disco_Porcentaje"] >= 90).astype(int)
-
-df["Recursos_Malos"] = (
-    df["CPU_Mala"] +
-    df["RAM_Mala"] +
-    df["Disco_Malo"]
-)
-
-def clasificar_condicion_tecnica(row):
-    malos = int(row["Recursos_Malos"])
-    cpu = row["Uso_CPU_Porcentaje"]
-    ram = row["Uso_RAM_Porcentaje"]
-
-    if malos >= 2:
-        return "MALO"
-    if malos == 1:
-        return "MALO"
-    if cpu >= 60 or ram >= 60:
-        return "REGULAR"
-    return "BUENO"
-
-df["Condicion_Tecnica"] = df.apply(
-    clasificar_condicion_tecnica,
-    axis=1
-)
-
-
-# ============================================================
-# TENDENCIAS
-# ============================================================
-
-if "Fecha_Hora" in df.columns:
-    df = df.sort_values(["ID_PC", "Fecha_Hora"]).copy()
-
-    df["CPU_Anterior"] = df.groupby("ID_PC")["Uso_CPU_Porcentaje"].shift(1)
-    df["RAM_Anterior"] = df.groupby("ID_PC")["Uso_RAM_Porcentaje"].shift(1)
-    df["Disco_Anterior"] = df.groupby("ID_PC")["Uso_Disco_Porcentaje"].shift(1)
-
-    df["Tendencia_CPU"] = (
-        df["Uso_CPU_Porcentaje"] - df["CPU_Anterior"]
-    ).fillna(0)
-    df["Tendencia_RAM"] = (
-        df["Uso_RAM_Porcentaje"] - df["RAM_Anterior"]
-    ).fillna(0)
-    df["Tendencia_Disco"] = (
-        df["Uso_Disco_Porcentaje"] - df["Disco_Anterior"]
-    ).fillna(0)
-else:
-    df["Tendencia_CPU"] = 0
-    df["Tendencia_RAM"] = 0
-    df["Tendencia_Disco"] = 0
-
-
-# ============================================================
-# VARIABLES DEL MODELO
+# FEATURES
 # ============================================================
 
 features = [
@@ -506,101 +368,133 @@ features = [
     "CPU_Normalizado_Porcentaje",
     "Porcentaje_Bateria",
     "Uso_Disco_Porcentaje",
+    "Temperatura_CPU",
+    "Procesos_Activos",
     "Presion_Recursos",
     "Promedio_Recursos",
     "CPU_RAM_Conjunta",
     "Diferencia_CPU",
     "Componentes_Saturados",
-    "Tendencia_CPU",
-    "Tendencia_RAM",
-    "Tendencia_Disco",
     "CPU_Mala",
     "RAM_Mala",
     "Disco_Malo",
     "Recursos_Malos",
+    "Tendencia_CPU",
+    "Tendencia_RAM",
+    "Tendencia_Disco",
+    "CPU_Media_5",
+    "RAM_Media_5",
+    "Disco_Media_5",
+    "CPU_Alta_5",
+    "RAM_Alta_5",
+    "Disco_Alto_5",
 ]
 
-X = df[features].replace([np.inf, -np.inf], np.nan)
-X = X.fillna(X.median(numeric_only=True)).fillna(0)
+X_all = historial[features].replace([np.inf, -np.inf], np.nan)
+X_all = X_all.fillna(X_all.median(numeric_only=True)).fillna(0)
 
-n_total = len(df)
-cantidad_criticos = int((df["Clase_Real"] == "CRÍTICO").sum())
-cantidad_estables = int((df["Clase_Real"] == "ESTABLE").sum())
+n_registros = len(historial)
+n_equipos = historial["ID_PC"].nunique()
+cantidad_criticos = int(historial["Clase_Real"].eq("CRÍTICO").sum())
+cantidad_estables = int(historial["Clase_Real"].eq("ESTABLE").sum())
 
-# Con el volumen actual de la flota se permite entrenar desde 10 registros,
-# siempre que existan al menos 2 ejemplos de cada clase.
-# Esto permite evaluar con 14 equipos sin esperar a acumular 20.
 puede_usar_supervisado = (
-    n_total >= 10
+    n_registros >= 10
     and cantidad_criticos >= 2
     and cantidad_estables >= 2
+    and n_equipos >= 4
 )
 
 
 # ============================================================
-# TRAIN / TEST
+# TRAIN/TEST POR EQUIPO PARA EVITAR DATA LEAKAGE
 # ============================================================
 
+train_df = historial.copy()
+test_df = historial.copy()
+
 if puede_usar_supervisado:
-    # 30% de prueba. Con 14 registros suele producir 4-5 registros
-    # de evaluación y mantiene representación de ambas clases cuando
-    # cada clase tiene al menos 2 ejemplos.
+    equipos_labels = (
+        historial.groupby("ID_PC")["Clase_Real"]
+        .agg(lambda s: "CRÍTICO" if np.mean(s.eq("CRÍTICO")) >= 0.5 else "ESTABLE")
+        .reset_index()
+    )
+
     try:
-        train_df, test_df = train_test_split(
-            df,
+        train_pcs, test_pcs = train_test_split(
+            equipos_labels["ID_PC"],
             test_size=0.30,
             random_state=42,
-            stratify=df["Clase_Real"],
+            stratify=equipos_labels["Clase_Real"],
         )
     except ValueError:
-        # Respaldo para conjuntos excepcionalmente pequeños.
-        train_df, test_df = train_test_split(
-            df,
-            test_size=max(2 / max(n_total, 1), 0.25),
+        train_pcs, test_pcs = train_test_split(
+            equipos_labels["ID_PC"],
+            test_size=0.30,
             random_state=42,
-            stratify=df["Clase_Real"],
         )
-else:
-    train_df = df.copy()
-    test_df = df.copy()
+
+    train_pcs = set(train_pcs)
+    test_pcs = set(test_pcs)
+
+    train_df = historial[historial["ID_PC"].isin(train_pcs)].copy()
+    test_df = historial[historial["ID_PC"].isin(test_pcs)].copy()
+
+    # Seguridad: si por el tamaño de la muestra la prueba pierde una clase,
+    # buscamos otra semilla que mantenga ambas clases.
+    if test_df["Clase_Real"].nunique() < 2 or train_df["Clase_Real"].nunique() < 2:
+        for seed in range(1, 101):
+            try:
+                tr_pcs, te_pcs = train_test_split(
+                    equipos_labels["ID_PC"],
+                    test_size=0.30,
+                    random_state=seed,
+                    stratify=equipos_labels["Clase_Real"],
+                )
+                tr = historial[historial["ID_PC"].isin(set(tr_pcs))]
+                te = historial[historial["ID_PC"].isin(set(te_pcs))]
+                if tr["Clase_Real"].nunique() == 2 and te["Clase_Real"].nunique() == 2:
+                    train_df, test_df = tr.copy(), te.copy()
+                    break
+            except Exception:
+                continue
 
 X_train = train_df[features].replace([np.inf, -np.inf], np.nan)
-X_train = X_train.fillna(X.median()).fillna(0)
-
+X_train = X_train.fillna(X_all.median(numeric_only=True)).fillna(0)
 X_test = test_df[features].replace([np.inf, -np.inf], np.nan)
-X_test = X_test.fillna(X.median()).fillna(0)
-
+X_test = X_test.fillna(X_all.median(numeric_only=True)).fillna(0)
+y_train = train_df["Clase_Real"].values
 y_test_real = test_df["Clase_Real"].values
 
 
 # ============================================================
-# MODELO SUPERVISADO
+# RANDOM FOREST
 # ============================================================
 
 modelo_supervisado = None
 
-if puede_usar_supervisado:
+if puede_usar_supervisado and train_df["Clase_Real"].nunique() == 2:
     modelo_supervisado = RandomForestClassifier(
-        n_estimators=400,
-        max_depth=8,
+        n_estimators=500,
+        max_depth=10,
         min_samples_split=4,
         min_samples_leaf=2,
         class_weight="balanced",
         random_state=42,
         n_jobs=-1,
     )
-    modelo_supervisado.fit(X_train, train_df["Clase_Real"])
+    modelo_supervisado.fit(X_train, y_train)
 
 
 # ============================================================
 # ISOLATION FOREST
 # ============================================================
 
-proporcion_criticos = cantidad_criticos / n_total if n_total else 0.10
+proporcion_criticos = cantidad_criticos / max(n_registros, 1)
 CONTAMINATION = float(np.clip(max(0.05, proporcion_criticos), 0.05, 0.25))
 
 modelo_anomalia = IsolationForest(
-    n_estimators=400,
+    n_estimators=500,
     contamination=CONTAMINATION,
     max_samples="auto",
     random_state=42,
@@ -608,36 +502,27 @@ modelo_anomalia = IsolationForest(
 )
 modelo_anomalia.fit(X_train)
 
-pred_anomalia = modelo_anomalia.predict(X)
-raw_anomaly = -modelo_anomalia.decision_function(X)
-
+raw_anomaly = -modelo_anomalia.decision_function(X_all)
 p05 = np.percentile(raw_anomaly, 5)
 p95 = np.percentile(raw_anomaly, 95)
-
 if p95 > p05:
     anomaly_score = ((raw_anomaly - p05) / (p95 - p05)) * 100
 else:
-    anomaly_score = np.full(len(df), 50.0)
-
+    anomaly_score = np.full(n_registros, 50.0)
 anomaly_score = np.clip(anomaly_score, 0, 100)
-df["Score_Anomalia"] = anomaly_score
+historial["Score_Anomalia"] = anomaly_score
 
 
 # ============================================================
 # PROBABILIDAD SUPERVISADA
 # ============================================================
 
-if modelo_supervisado is not None:
-    probabilidades = modelo_supervisado.predict_proba(X)
-    clases_modelo = list(modelo_supervisado.classes_)
-
-    if "CRÍTICO" in clases_modelo:
-        indice_critico = clases_modelo.index("CRÍTICO")
-        prob_critico = probabilidades[:, indice_critico]
-    else:
-        prob_critico = np.zeros(len(df))
+if modelo_supervisado is not None and "CRÍTICO" in list(modelo_supervisado.classes_):
+    probs = modelo_supervisado.predict_proba(X_all)
+    idx_critical = list(modelo_supervisado.classes_).index("CRÍTICO")
+    prob_critico = probs[:, idx_critical]
 else:
-    prob_critico = np.zeros(len(df))
+    prob_critico = np.zeros(n_registros)
 
 
 # ============================================================
@@ -649,9 +534,9 @@ def calcular_score_tecnico(row):
     ram = row["Uso_RAM_Porcentaje"]
     disco = row["Uso_Disco_Porcentaje"]
     cpu_norm = row["CPU_Normalizado_Porcentaje"]
+    persistencia = max(row["CPU_Alta_5"], row["RAM_Alta_5"], row["Disco_Alto_5"])
 
     score = 0
-
     if cpu >= 95:
         score += 30
     elif cpu >= 85:
@@ -686,29 +571,32 @@ def calcular_score_tecnico(row):
     elif cpu_norm >= 75:
         score += 5
 
+    # Persistencia: aumenta el riesgo solo cuando el nivel alto se mantiene.
+    score += min(10, int(round(persistencia * 10)))
+
     return min(score, 100)
 
 
-df["Score_Tecnico"] = df.apply(calcular_score_tecnico, axis=1)
+historial["Score_Tecnico"] = historial.apply(calcular_score_tecnico, axis=1)
 
 
 # ============================================================
-# RIESGO FINAL
+# RIESGO IA FINAL
 # ============================================================
 
 if modelo_supervisado is not None:
-    df["Riesgo_IA"] = (
+    historial["Riesgo_IA"] = (
         prob_critico * 0.55
-        + anomaly_score * 0.25
-        + df["Score_Tecnico"] * 0.20
+        + historial["Score_Anomalia"] * 0.20
+        + historial["Score_Tecnico"] * 0.25
     )
 else:
-    df["Riesgo_IA"] = (
-        anomaly_score * 0.55
-        + df["Score_Tecnico"] * 0.45
+    historial["Riesgo_IA"] = (
+        historial["Score_Anomalia"] * 0.50
+        + historial["Score_Tecnico"] * 0.50
     )
 
-df["Riesgo_IA"] = np.clip(df["Riesgo_IA"], 0, 100)
+historial["Riesgo_IA"] = np.clip(historial["Riesgo_IA"], 0, 100)
 
 
 def determinar_estado(riesgo):
@@ -731,159 +619,113 @@ def determinar_nivel(riesgo):
     return "Bajo"
 
 
-df["Estado"] = df["Riesgo_IA"].apply(determinar_estado)
-df["Nivel_Riesgo"] = df["Riesgo_IA"].apply(determinar_nivel)
+historial["Estado"] = historial["Riesgo_IA"].apply(determinar_estado)
+historial["Nivel_Riesgo"] = historial["Riesgo_IA"].apply(determinar_nivel)
 
 
 # ============================================================
-# DIAGNOSTICO Y RECOMENDACIONES
+# DIAGNOSTICO / RECOMENDACIONES
 # ============================================================
 
 def generar_diagnostico(row):
     problemas = []
+    cpu, ram, disco = row["Uso_CPU_Porcentaje"], row["Uso_RAM_Porcentaje"], row["Uso_Disco_Porcentaje"]
 
-    cpu = row["Uso_CPU_Porcentaje"]
-    ram = row["Uso_RAM_Porcentaje"]
-    disco = row["Uso_Disco_Porcentaje"]
-    cpu_norm = row["CPU_Normalizado_Porcentaje"]
+    if cpu < 60:
+        problemas.append("CPU en rango bueno (<60%).")
+    elif cpu < 85:
+        problemas.append("CPU en rango regular (60%-84.99%), compatible con carga moderada.")
+    else:
+        problemas.append("CPU en rango malo (>=85%); si la condición es persistente puede provocar lentitud.")
 
-    if cpu >= 95:
-        problemas.append("La CPU presenta saturación crítica (>=95%).")
-    elif cpu >= 85:
-        problemas.append("La CPU presenta un nivel elevado (>=85%).")
+    if ram < 60:
+        problemas.append("RAM en rango bueno (<60%).")
+    elif ram < 85:
+        problemas.append("RAM en rango regular (60%-84.99%), aceptable bajo carga.")
+    else:
+        problemas.append("RAM en rango malo (>=85%); puede aumentar la paginación y reducir el rendimiento.")
 
-    if ram >= 95:
-        problemas.append(
-            "La memoria RAM está en nivel crítico (>=95%), "
-            "lo que indica alta presión de memoria."
-        )
-    elif ram >= 85:
-        problemas.append("El consumo de RAM es elevado (>=85%).")
-
-    if disco >= 97:
-        problemas.append("La actividad del disco es extremadamente elevada (>=97%).")
+    if disco >= 95:
+        problemas.append("Actividad de disco muy alta (>=95%).")
     elif disco >= 90:
-        problemas.append("La actividad del disco es elevada (>=90%).")
+        problemas.append("Actividad de disco alta (90%-94.99%).")
 
-    if cpu_norm >= 90:
-        problemas.append(
-            "La CPU normalizada confirma un comportamiento de alta carga."
-        )
-
-    if row["Tendencia_CPU"] >= 15:
-        problemas.append("La utilización de CPU está aumentando rápidamente.")
-
-    if row["Tendencia_RAM"] >= 15:
-        problemas.append("El consumo de RAM está aumentando respecto a la medición anterior.")
-
-    if row["Tendencia_Disco"] >= 15:
-        problemas.append("La actividad del almacenamiento presenta un incremento considerable.")
-
-    if not problemas:
-        return (
-            "No se identifican señales técnicas críticas en las métricas actuales. "
-            "El comportamiento observado es consistente con una operación estable."
-        )
+    if row["CPU_Alta_5"] >= 0.6:
+        problemas.append("La CPU ha permanecido elevada en la mayoría de las últimas 5 mediciones.")
+    if row["RAM_Alta_5"] >= 0.6:
+        problemas.append("La RAM ha permanecido elevada en la mayoría de las últimas 5 mediciones.")
+    if row["Disco_Alto_5"] >= 0.6:
+        problemas.append("La actividad de disco ha permanecido elevada en la mayoría de las últimas 5 mediciones.")
 
     return " ".join(problemas)
 
 
 def generar_recomendaciones(row):
     recomendaciones = []
-    cpu = row["Uso_CPU_Porcentaje"]
-    ram = row["Uso_RAM_Porcentaje"]
-    disco = row["Uso_Disco_Porcentaje"]
-    bateria = row["Porcentaje_Bateria"]
+    cpu, ram, disco = row["Uso_CPU_Porcentaje"], row["Uso_RAM_Porcentaje"], row["Uso_Disco_Porcentaje"]
 
     if cpu >= 85:
-        recomendaciones.append(
-            "Revisar procesos con mayor consumo de CPU y determinar si existe una "
-            "aplicación o servicio generando carga sostenida."
-        )
-
+        recomendaciones.append("Revisar los procesos con mayor consumo de CPU y comprobar si la carga permanece sostenida.")
     if ram >= 85:
-        recomendaciones.append(
-            "Revisar aplicaciones con alto consumo de memoria, cerrar procesos "
-            "innecesarios y verificar presión de memoria."
-        )
-
+        recomendaciones.append("Revisar aplicaciones con alto consumo de memoria y verificar presión de memoria.")
     if disco >= 90:
-        recomendaciones.append(
-            "Revisar procesos con alta actividad de almacenamiento, espacio disponible "
-            "y comportamiento de lectura/escritura del disco."
-        )
-
-    if bateria <= 15:
-        recomendaciones.append(
-            "Conectar el equipo a corriente y comprobar el estado de la batería."
-        )
-
-    if cpu >= 85 and ram >= 85:
-        recomendaciones.append(
-            "Investigar aplicaciones que estén generando simultáneamente alta carga "
-            "de CPU y memoria."
-        )
-
+        recomendaciones.append("Revisar procesos con alta actividad de almacenamiento y espacio disponible.")
+    if row["CPU_Alta_5"] >= 0.6 or row["RAM_Alta_5"] >= 0.6:
+        recomendaciones.append("Priorizar una revisión técnica porque la carga elevada es persistente y no corresponde solo a un pico aislado.")
     if cpu >= 85 and ram >= 85 and disco >= 90:
-        recomendaciones.append(
-            "Realizar diagnóstico integral porque existe saturación simultánea "
-            "de CPU, memoria y almacenamiento."
-        )
-
+        recomendaciones.append("Realizar diagnóstico integral del equipo debido a saturación simultánea de CPU, RAM y disco.")
     if not recomendaciones:
-        recomendaciones.append(
-            "No se requiere una intervención inmediata; mantener el monitoreo preventivo."
-        )
-
+        recomendaciones.append("No se requiere una intervención inmediata; mantener el monitoreo preventivo.")
     return recomendaciones
 
 
-df["Diagnostico_IA"] = df.apply(generar_diagnostico, axis=1)
-df["Recomendaciones_IA"] = df.apply(generar_recomendaciones, axis=1)
+historial["Diagnostico_IA"] = historial.apply(generar_diagnostico, axis=1)
+historial["Recomendaciones_IA"] = historial.apply(generar_recomendaciones, axis=1)
 
 
 # ============================================================
-# EVALUACION: MODELO SUPERVISADO Y SISTEMA DESPLEGADO
+# VISTA ACTUAL DE CADA EQUIPO
 # ============================================================
 
-if modelo_supervisado is not None:
-    # Predicción pura del Random Forest sobre datos NO vistos.
-    pred_test_supervisado = modelo_supervisado.predict(X_test)
-    evaluacion_nombre = "Random Forest supervisado"
+# La IA se entrena con TODAS las mediciones; el dashboard muestra solo
+# la última medición de cada PC para que "Total equipos" sea realmente el
+# número de PCs y no el número de filas históricas.
+current_df = (
+    historial.sort_values(["ID_PC", "Fecha_Hora"], na_position="first")
+    .groupby("ID_PC", as_index=False)
+    .tail(1)
+    .copy()
+)
+
+# Tickets de la tabla equipos, si existe, se usan para complementar la vista actual.
+if not equipos_bd.empty:
+    eq = equipos_bd.rename(columns={"id_pc": "ID_PC", "ticket_usuario": "Ticket_Usuario_Equipo"})
+    if "ID_PC" in eq.columns:
+        eq["ID_PC"] = eq["ID_PC"].astype(str)
+        merge_cols = [c for c in ["ID_PC", "Ticket_Usuario_Equipo"] if c in eq.columns]
+        current_df = current_df.merge(eq[merge_cols], on="ID_PC", how="left")
+        current_df["Tiene_Ticket_Equipo"] = current_df.get("Ticket_Usuario_Equipo", "").fillna("").astype(str).str.strip().ne("")
+    else:
+        current_df["Tiene_Ticket_Equipo"] = False
 else:
-    pred_test_if = modelo_anomalia.predict(X_test)
-    pred_test_supervisado = np.where(pred_test_if == -1, "CRÍTICO", "ESTABLE")
-    evaluacion_nombre = "Isolation Forest — evaluación preliminar"
+    current_df["Tiene_Ticket_Equipo"] = False
 
-# Alias utilizado por las secciones de evaluación existentes.
-pred_test = pred_test_supervisado
 
+# ============================================================
+# EVALUACION DEL MODELO EN TEST
+# ============================================================
 
 def metricas_clasificacion(y_true, y_pred):
-    cm = confusion_matrix(
-        y_true,
-        y_pred,
-        labels=["CRÍTICO", "ESTABLE"],
-    )
-    tp = int(cm[0, 0])
-    fn = int(cm[0, 1])
-    fp = int(cm[1, 0])
-    tn = int(cm[1, 1])
-
+    cm = confusion_matrix(y_true, y_pred, labels=["CRÍTICO", "ESTABLE"])
+    tp, fn = int(cm[0, 0]), int(cm[0, 1])
+    fp, tn = int(cm[1, 0]), int(cm[1, 1])
     specificity = tn / (tn + fp) if (tn + fp) else 0.0
     fpr_value = fp / (fp + tn) if (fp + tn) else 0.0
-
     return {
         "accuracy": accuracy_score(y_true, y_pred),
-        "precision": precision_score(
-            y_true, y_pred, pos_label="CRÍTICO", zero_division=0
-        ),
-        "recall": recall_score(
-            y_true, y_pred, pos_label="CRÍTICO", zero_division=0
-        ),
-        "f1": f1_score(
-            y_true, y_pred, pos_label="CRÍTICO", zero_division=0
-        ),
+        "precision": precision_score(y_true, y_pred, pos_label="CRÍTICO", zero_division=0),
+        "recall": recall_score(y_true, y_pred, pos_label="CRÍTICO", zero_division=0),
+        "f1": f1_score(y_true, y_pred, pos_label="CRÍTICO", zero_division=0),
         "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
         "specificity": specificity,
         "fpr": fpr_value,
@@ -898,134 +740,76 @@ def metricas_clasificacion(y_true, y_pred):
     }
 
 
-metricas = metricas_clasificacion(
-    y_test_real,
-    pred_test_supervisado,
-)
-
-
-# ============================================================
-# EVALUACION DEL SISTEMA DESPLEGADO
-# ============================================================
-# El estado general de la flota se calcula sobre TODOS los registros.
-# La matriz de confusión se calcula SOLO sobre el conjunto de prueba.
-# Por eso los conteos no tienen por qué coincidir.
-#
-# Para evitar confusión en la interfaz, mostramos explícitamente
-# cuántos registros se usaron en cada vista.
-
 if modelo_supervisado is not None:
-    prob_test_full = modelo_supervisado.predict_proba(X_test)
-    clases_test_full = list(modelo_supervisado.classes_)
-    if "CRÍTICO" in clases_test_full:
-        idx_critico_test = clases_test_full.index("CRÍTICO")
-        prob_critico_test = prob_test_full[:, idx_critico_test]
-    else:
-        prob_critico_test = np.zeros(len(test_df))
+    pred_test = modelo_supervisado.predict(X_test)
+    evaluacion_nombre = "Random Forest supervisado"
 else:
-    prob_critico_test = np.zeros(len(test_df))
+    pred_test = np.where(modelo_anomalia.predict(X_test) == -1, "CRÍTICO", "ESTABLE")
+    evaluacion_nombre = "Isolation Forest como evaluacion preliminar"
+
+metricas = metricas_clasificacion(y_test_real, pred_test)
 
 
 # ============================================================
 # SIDEBAR
-
 # ============================================================
 
 st.sidebar.markdown("## Diagnóstico individual")
 
-pc_seleccionado = st.sidebar.selectbox(
-    "Equipo",
-    sorted(df["ID_PC"].astype(str).unique()),
-)
-
-pc_data = df[df["ID_PC"].astype(str) == str(pc_seleccionado)]
+pc_options = sorted(current_df["ID_PC"].astype(str).unique())
+pc_seleccionado = st.sidebar.selectbox("Equipo", pc_options)
+pc_data = current_df[current_df["ID_PC"].astype(str) == str(pc_seleccionado)]
 equipo = pc_data.iloc[0]
 
 st.sidebar.divider()
 st.sidebar.markdown("## Registro de ticket")
 
 with st.sidebar.form("form_ticket"):
-    pc_ticket = st.selectbox(
-        "Equipo",
-        sorted(df["ID_PC"].astype(str).unique()),
-        key="pc_ticket",
-    )
-
-    descripcion = st.text_area(
-        "Descripción del problema",
-        placeholder="Ejemplo: equipo lento, congelamiento, pantalla azul...",
-    )
-
-    enviado = st.form_submit_button(
-        "Registrar ticket",
-        use_container_width=True,
-    )
+    pc_ticket = st.selectbox("Equipo", pc_options, key="pc_ticket")
+    descripcion = st.text_area("Descripción del problema", placeholder="Ejemplo: equipo lento, congelamiento, pantalla azul...")
+    enviado = st.form_submit_button("Registrar ticket", use_container_width=True)
 
     if enviado:
         if descripcion.strip():
             try:
-                supabase.rpc(
-                    "reportar_ticket",
-                    {
-                        "p_id_pc": pc_ticket,
-                        "p_ticket": descripcion.strip(),
-                    },
-                ).execute()
+                supabase.rpc("reportar_ticket", {"p_id_pc": pc_ticket, "p_ticket": descripcion.strip()}).execute()
                 st.sidebar.success("Ticket registrado correctamente.")
                 st.cache_data.clear()
                 st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"No fue posible registrar el ticket: {e}")
+            except Exception as exc:
+                st.sidebar.error(f"No fue posible registrar el ticket: {exc}")
         else:
             st.sidebar.warning("Escribe una descripción antes de registrar el ticket.")
 
 
 # ============================================================
-# INDICADORES PRINCIPALES
+# DASHBOARD
 # ============================================================
 
 st.markdown('<div class="section-title">Estado general de la flota</div>', unsafe_allow_html=True)
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
-
-k1.metric("Total equipos", f"{len(df)}")
-k2.metric(
-    "En riesgo",
-    f"{int((df['Riesgo_IA'] >= 35).sum())}",
-    help="Incluye estados MEDIO, ALTO y CRÍTICO según el puntaje de riesgo."
-)
-k3.metric(
-    "Críticos IA",
-    f"{int((df['Estado'] == 'CRÍTICO').sum())}",
-    help="Equipos que la lógica final de IA clasifica con riesgo >= 80/100."
-)
-k4.metric(
-    "Con ticket",
-    f"{cantidad_criticos}",
-    help="Registros utilizados como referencia de la clase CRÍTICO."
-)
-k5.metric("CPU promedio", f"{df['Uso_CPU_Porcentaje'].mean():.1f}%")
-k6.metric("RAM promedio", f"{df['Uso_RAM_Porcentaje'].mean():.1f}%")
+k1.metric("Total equipos", f"{len(current_df)}")
+k2.metric("En riesgo", f"{int((current_df['Riesgo_IA'] >= 35).sum())}")
+k3.metric("Críticos IA", f"{int((current_df['Estado'] == 'CRÍTICO').sum())}")
+k4.metric("Con ticket", f"{int(current_df['Tiene_Ticket_Equipo'].sum())}")
+k5.metric("CPU promedio", f"{current_df['Uso_CPU_Porcentaje'].mean():.1f}%")
+k6.metric("RAM promedio", f"{current_df['Uso_RAM_Porcentaje'].mean():.1f}%")
 
 st.caption(
-    "El contador de la flota se calcula con todos los registros disponibles. "
-    "La matriz de confusión utiliza únicamente los registros reservados para prueba; "
-    "por diseño, sus totales no tienen que coincidir."
+    f"La IA se entrena con {n_registros:,} mediciones históricas de {n_equipos} equipos. "
+    "El dashboard muestra únicamente la última medición de cada equipo."
 )
 
 fleet_counts = (
-    df["Estado"]
-    .value_counts()
+    current_df["Estado"].value_counts()
     .reindex(["ESTABLE", "MEDIO", "ALTO", "CRÍTICO"], fill_value=0)
     .reset_index()
 )
-fleet_counts.columns = ["Estado", "Cantidad"]
+fleet_counts.columns = ["Estado IA", "Cantidad"]
 
-st.dataframe(
-    fleet_counts,
-    use_container_width=True,
-    hide_index=True,
-)
+st.dataframe(fleet_counts, use_container_width=True, hide_index=True)
+
 
 # ============================================================
 # DIAGNOSTICO INDIVIDUAL
@@ -1033,463 +817,208 @@ st.dataframe(
 
 st.markdown('<div class="section-title">Diagnóstico individual</div>', unsafe_allow_html=True)
 
-estado_pc = equipo["Estado"]
-risk_class = {
+estado_css = {
     "CRÍTICO": "status-critical",
     "ALTO": "status-high",
     "MEDIO": "status-medium",
     "ESTABLE": "status-stable",
-}.get(estado_pc, "status-stable")
+}
 
 st.markdown(
-    f"""
-    <div class="status-card {risk_class}">
-        <div class="status-main">{estado_pc} — Riesgo {equipo['Riesgo_IA']:.1f}/100</div>
-        <div class="status-sub">Nivel de riesgo: {equipo['Nivel_Riesgo']} | Equipo: {pc_seleccionado}</div>
-    </div>
-    """,
+    f'<div class="status-card {estado_css[equipo["Estado"]]}">'
+    f'<strong>{equipo["Estado"]}</strong> — Riesgo IA {float(equipo["Riesgo_IA"]):.1f}/100 — '
+    f'Nivel {equipo["Nivel_Riesgo"]} — Equipo {equipo["ID_PC"]}</div>',
     unsafe_allow_html=True,
 )
 
 r1, r2, r3, r4, r5 = st.columns(5)
 r1.metric("CPU", f"{equipo['Uso_CPU_Porcentaje']:.1f}%")
 r2.metric("RAM", f"{equipo['Uso_RAM_Porcentaje']:.1f}%")
-r3.metric("CPU normalizada", f"{equipo['CPU_Normalizado_Porcentaje']:.1f}%")
-r4.metric("Disco", f"{equipo['Uso_Disco_Porcentaje']:.1f}%")
-r5.metric("Batería", f"{equipo['Porcentaje_Bateria']:.1f}%")
+r3.metric("Disco", f"{equipo['Uso_Disco_Porcentaje']:.1f}%")
+r4.metric("Riesgo técnico", f"{equipo['Score_Tecnico']:.1f}/100")
+r5.metric("Anomalía", f"{equipo['Score_Anomalia']:.1f}/100")
 
-col_diag, col_rec = st.columns([1.15, 1])
-
-with col_diag:
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown("**Análisis generado por la IA**")
-    st.write(equipo["Diagnostico_IA"])
-    st.markdown("**Componentes del riesgo**")
-    st.write(
-        f"Modelo supervisado: {prob_critico[df.index.get_loc(equipo.name)] * 100:.1f}% | "
-        f"Anomalía: {equipo['Score_Anomalia']:.1f}/100 | "
-        f"Reglas técnicas: {equipo['Score_Tecnico']:.1f}/100"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col_rec:
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown("**Recomendaciones técnicas**")
+c1, c2 = st.columns([1, 1])
+with c1:
+    st.markdown("#### Diagnóstico")
+    st.info(equipo["Diagnostico_IA"])
+with c2:
+    st.markdown("#### Recomendaciones")
     for rec in equipo["Recomendaciones_IA"]:
-        st.write(f"• {rec}")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-
-# ============================================================
-# INTERPRETACION TECNICA DE CPU Y RAM
-# ============================================================
-
-st.markdown('<div class="section-title">Referencia técnica utilizada por la IA</div>', unsafe_allow_html=True)
-guide = pd.DataFrame(
-    {
-        "Rango": [
-            "0% - 59.99%",
-            "60% - 84.99%",
-            "85% - 100%",
-        ],
-        "CPU": [
-            "BUENO",
-            "REGULAR",
-            "MALO",
-        ],
-        "RAM": [
-            "BUENO",
-            "REGULAR",
-            "MALO",
-        ],
-        "Interpretación": [
-            "Reposo o tareas ligeras.",
-            "Carga aceptable; se debe observar si permanece.",
-            "Carga alta; requiere revisión si es sostenida.",
-        ],
-    }
-)
-st.dataframe(guide, use_container_width=True, hide_index=True)
-
-st.markdown(
-    f'<div class="section-note">En la flota actual: CPU promedio {df["Uso_CPU_Porcentaje"].mean():.1f}% y RAM promedio {df["Uso_RAM_Porcentaje"].mean():.1f}%. '
-    f'Equipos con CPU en estado MALO: {(df["Estado_CPU_Tecnico"] == "MALO").sum()} | '
-    f'Equipos con RAM en estado MALO: {(df["Estado_RAM_Tecnico"] == "MALO").sum()}.</div>',
-    unsafe_allow_html=True,
-)
+        st.write(f"- {rec}")
 
 
 # ============================================================
 # TABS
 # ============================================================
 
-tab_dashboard, tab_evaluacion, tab_datos = st.tabs(
-    ["Dashboard", "Evaluación y entrenamiento", "Inventario"]
-)
-
-
-# ============================================================
-# DASHBOARD
-# ============================================================
+tab_dashboard, tab_evaluacion, tab_datos = st.tabs(["Dashboard", "Evaluación y entrenamiento", "Inventario"])
 
 with tab_dashboard:
-    st.markdown('<div class="section-title">Mapa de riesgo</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="section-note">La posición representa la relación entre CPU y RAM. El tamaño representa el riesgo calculado.</div>',
-        unsafe_allow_html=True,
-    )
-
     left, right = st.columns([1, 2])
 
     with left:
-        detalle = pd.DataFrame(
-            {
-                "Indicador": [
-                    "ID",
-                    "Usuario",
-                    "Modelo",
-                    "Serial",
-                    "Estado",
-                    "Riesgo",
-                    "Nivel",
-                    "CPU",
-                    "RAM",
-                    "CPU normalizada",
-                    "Disco",
-                    "Batería",
-                    "Ticket",
-                ],
-                "Valor": [
-                    equipo["ID_PC"],
-                    equipo.get("Usuario", "No disponible"),
-                    equipo.get("Modelo", "No disponible"),
-                    equipo.get("Serial", "No disponible"),
-                    estado_pc,
-                    f"{equipo['Riesgo_IA']:.1f}/100",
-                    equipo["Nivel_Riesgo"],
-                    f"{equipo['Uso_CPU_Porcentaje']:.1f}%",
-                    f"{equipo['Uso_RAM_Porcentaje']:.1f}%",
-                    f"{equipo['CPU_Normalizado_Porcentaje']:.1f}%",
-                    f"{equipo['Uso_Disco_Porcentaje']:.1f}%",
-                    f"{equipo['Porcentaje_Bateria']:.1f}%",
-                    "Sí" if equipo["Tiene_Ticket"] else "No",
-                ],
-            }
-        )
+        st.markdown('<div class="section-title">Detalle del equipo</div>', unsafe_allow_html=True)
+        detalle = pd.DataFrame({
+            "Indicador": [
+                "ID", "Usuario", "Modelo", "Serial", "Fecha de medición", "Estado IA",
+                "Condición técnica CPU", "Condición técnica RAM", "Riesgo IA", "Ticket"
+            ],
+            "Valor": [
+                equipo["ID_PC"],
+                equipo.get("Usuario", "No disponible"),
+                equipo.get("Modelo", "No disponible"),
+                equipo.get("Serial", "No disponible"),
+                str(equipo.get("Fecha_Hora", "No disponible")),
+                equipo["Estado"],
+                equipo["Estado_CPU_Tecnico"],
+                equipo["Estado_RAM_Tecnico"],
+                f"{equipo['Riesgo_IA']:.1f}/100",
+                "SI" if equipo["Tiene_Ticket_Equipo"] else "NO",
+            ],
+        })
         st.dataframe(detalle, use_container_width=True, hide_index=True)
 
     with right:
+        st.markdown('<div class="section-title">Mapa de riesgo de la flota</div>', unsafe_allow_html=True)
         mapa = px.scatter(
-            df,
+            current_df,
             x="Uso_CPU_Porcentaje",
             y="Uso_RAM_Porcentaje",
             color="Estado",
             size="Riesgo_IA",
-            hover_data=[
-                "ID_PC",
-                "Uso_Disco_Porcentaje",
-                "Riesgo_IA",
-                "Nivel_Riesgo",
-                "Tiene_Ticket",
-            ],
+            hover_data=["ID_PC", "Uso_Disco_Porcentaje", "Riesgo_IA", "Nivel_Riesgo", "Estado_Tecnico"],
             color_discrete_map={
                 "CRÍTICO": "#dc2626",
-                "ALTO": "#ea580c",
-                "MEDIO": "#ca8a04",
+                "ALTO": "#f97316",
+                "MEDIO": "#eab308",
                 "ESTABLE": "#2563eb",
             },
         )
-        mapa.update_layout(
-            height=500,
-            plot_bgcolor="#ffffff",
-            paper_bgcolor="#ffffff",
-            xaxis_title="Uso CPU (%)",
-            yaxis_title="Uso RAM (%)",
-            legend_title="Estado",
-            margin=dict(l=35, r=20, t=40, b=40),
-        )
+        mapa.update_layout(height=470, paper_bgcolor="#ffffff", plot_bgcolor="#ffffff")
         st.plotly_chart(mapa, use_container_width=True)
 
     st.markdown('<div class="section-title">Priorización de atención</div>', unsafe_allow_html=True)
+    prioridad = current_df[[
+        "ID_PC", "Estado", "Nivel_Riesgo", "Riesgo_IA", "Score_Tecnico", "Score_Anomalia",
+        "Uso_CPU_Porcentaje", "Uso_RAM_Porcentaje", "Uso_Disco_Porcentaje", "Tiene_Ticket_Equipo",
+        "Diagnostico_IA"
+    ]].copy().sort_values("Riesgo_IA", ascending=False)
+    st.dataframe(prioridad, use_container_width=True, hide_index=True)
 
-    priorizacion = df[
-        [
-            "ID_PC",
-            "Estado",
-            "Nivel_Riesgo",
-            "Riesgo_IA",
-            "Uso_CPU_Porcentaje",
-            "Uso_RAM_Porcentaje",
-            "Uso_Disco_Porcentaje",
-            "Score_Tecnico",
-            "Score_Anomalia",
-            "Estado_CPU_Tecnico",
-            "Estado_RAM_Tecnico",
-            "Condicion_Tecnica",
-            "Tiene_Ticket",
-            "Diagnostico_IA",
-        ]
-    ].copy().sort_values("Riesgo_IA", ascending=False)
-
-    st.dataframe(priorizacion, use_container_width=True, hide_index=True)
-
-    st.markdown('<div class="section-title">Distribución del riesgo</div>', unsafe_allow_html=True)
-    fig_riesgo = px.histogram(
-        df,
+    st.markdown('<div class="section-title">Distribución del riesgo actual</div>', unsafe_allow_html=True)
+    risk_fig = px.histogram(
+        current_df,
         x="Riesgo_IA",
         color="Estado",
-        nbins=20,
+        nbins=12,
         color_discrete_map={
             "CRÍTICO": "#dc2626",
-            "ALTO": "#ea580c",
-            "MEDIO": "#ca8a04",
+            "ALTO": "#f97316",
+            "MEDIO": "#eab308",
             "ESTABLE": "#2563eb",
         },
     )
-    fig_riesgo.update_layout(
-        height=390,
-        plot_bgcolor="#ffffff",
-        paper_bgcolor="#ffffff",
-        xaxis_title="Riesgo IA (0 a 100)",
-        yaxis_title="Cantidad de registros",
-        margin=dict(l=35, r=20, t=40, b=40),
-    )
-    st.plotly_chart(fig_riesgo, use_container_width=True)
+    risk_fig.update_layout(height=380, paper_bgcolor="#ffffff", plot_bgcolor="#ffffff")
+    st.plotly_chart(risk_fig, use_container_width=True)
 
 
 # ============================================================
-# EVALUACION Y ENTRENAMIENTO
+# EVALUACION
 # ============================================================
 
 with tab_evaluacion:
     st.markdown('<div class="section-title">Evaluación y entrenamiento de la IA</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Esta sección concentra la evidencia de entrenamiento, validación, rendimiento y comportamiento del modelo. Con 14 equipos, la evaluación supervisada se ejecuta cuando existen al menos 2 ejemplos de cada clase.</div>',
+        f'<div class="section-note">Fuente de entrenamiento: mediciones_equipos. '
+        f'{n_registros:,} mediciones de {n_equipos} equipos. El objetivo es detectar CRÍTICO frente a NO CRÍTICO.</div>',
         unsafe_allow_html=True,
     )
 
-    estado_entrenamiento = "Modelo supervisado activo" if modelo_supervisado is not None else "Modo preliminar: detección de anomalías"
-    texto_entrenamiento = (
-        f"Registros totales: {n_total} | Críticos: {cantidad_criticos} | Estables: {cantidad_estables} | "
-        f"Entrenamiento: {len(train_df)} | Prueba: {len(test_df)} | "
-        f"Método: {evaluacion_nombre}"
-    )
-
-    st.markdown(
-        f"""
-        <div class="evaluation-band">
-            <div class="evaluation-band-title">{estado_entrenamiento}</div>
-            <div class="evaluation-band-text">{texto_entrenamiento}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if modelo_supervisado is None:
-        faltan_registros = max(0, 10 - n_total)
-        faltan_criticos = max(0, 2 - cantidad_criticos)
-        faltan_estables = max(0, 2 - cantidad_estables)
-
-        st.warning(
-            f"El modelo supervisado todavía no puede entrenarse con el conjunto actual. "
-            f"Requisito operativo: mínimo 10 registros, 2 críticos y 2 estables. "
-            f"Actualmente hay {n_total} registros, {cantidad_criticos} críticos y "
-            f"{cantidad_estables} estables. "
-            f"Faltan aproximadamente {faltan_registros} registros, "
-            f"{faltan_criticos} críticos y {faltan_estables} estables."
+    if modelo_supervisado is not None:
+        st.success(
+            f"Modelo supervisado activo. Entrenamiento: {len(train_df):,} mediciones de "
+            f"{train_df['ID_PC'].nunique()} equipos. Prueba: {len(test_df):,} mediciones de "
+            f"{test_df['ID_PC'].nunique()} equipos. No se mezclaron equipos entre entrenamiento y prueba."
         )
     else:
-        st.success(
-            f"Modelo supervisado activo. La evaluación se realiza con "
-            f"{len(train_df)} registros de entrenamiento y {len(test_df)} registros "
-            f"reservados para prueba. La matriz de confusión y las curvas representan "
-            f"exclusivamente el conjunto de prueba; el estado general de la flota usa "
-            f"los {len(df)} registros disponibles."
+        st.warning(
+            f"El modelo supervisado no está activo. Registros: {n_registros}; equipos: {n_equipos}; "
+            f"críticos: {cantidad_criticos}; no críticos: {cantidad_estables}."
         )
 
-    # -----------------------
-    # RESUMEN DEL EXPERIMENTO
-    # -----------------------
-    if modelo_supervisado is not None:
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Registros para entrenar", len(train_df))
-        s2.metric("Registros para probar", len(test_df))
-        s3.metric("Críticos en prueba", int((y_test_real == "CRÍTICO").sum()))
-        s4.metric("Estables en prueba", int((y_test_real == "ESTABLE").sum()))
-
-        st.caption(
-            "La matriz de confusión suma únicamente los registros de prueba. "
-            "Por eso su total no tiene por qué ser igual al total de equipos mostrado en el dashboard."
-        )
-
-    # -----------------------
-    # METRICAS
-    # -----------------------
-    st.markdown('<div class="section-title">Métricas principales de clasificación</div>', unsafe_allow_html=True)
-
+    st.markdown('<div class="section-title">Calidad de clasificación</div>', unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
-    metric_cards = [
-        ("Accuracy", metricas["accuracy"], "Predicciones correctas sobre el total."),
-        ("Precision", metricas["precision"], "De lo marcado como crítico, cuánto era realmente crítico."),
-        ("Recall", metricas["recall"], "De los críticos reales, cuánto logró detectar la IA."),
-        ("F1-Score", metricas["f1"], "Equilibrio entre Precision y Recall."),
-    ]
-    for col, (label, value, desc) in zip([m1, m2, m3, m4], metric_cards):
-        with col:
-            st.markdown(
-                f"""
-                <div class="metric-box">
-                    <div class="metric-label">{label}</div>
-                    <div class="metric-value">{value:.2%}</div>
-                    <div class="metric-desc">{desc}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    m1.metric("Accuracy", f"{metricas['accuracy']:.2%}")
+    m2.metric("Precision", f"{metricas['precision']:.2%}")
+    m3.metric("Recall", f"{metricas['recall']:.2%}")
+    m4.metric("F1-Score", f"{metricas['f1']:.2%}")
 
-    st.markdown('<div class="section-title">Métricas adicionales de evaluación</div>', unsafe_allow_html=True)
+    m5, m6, m7, m8 = st.columns(4)
+    m5.metric("Balanced Accuracy", f"{metricas['balanced_accuracy']:.2%}")
+    m6.metric("Specificity", f"{metricas['specificity']:.2%}")
+    m7.metric("MCC", f"{metricas['mcc']:.3f}")
+    m8.metric("False Positive Rate", f"{metricas['fpr']:.2%}")
 
-    a1, a2, a3, a4 = st.columns(4)
-    extra_cards = [
-        ("Balanced Accuracy", metricas["balanced_accuracy"], "Promedio equilibrado entre sensibilidad de ambas clases."),
-        ("Specificity", metricas["specificity"], "Capacidad de reconocer correctamente los equipos estables."),
-        ("MCC", metricas["mcc"], "Medida robusta de correlación entre predicción y realidad."),
-        ("False Positive Rate", metricas["fpr"], "Proporción de equipos estables marcados incorrectamente como críticos."),
-    ]
-    for col, (label, value, desc) in zip([a1, a2, a3, a4], extra_cards):
-        with col:
-            st.markdown(
-                f"""
-                <div class="metric-box">
-                    <div class="metric-label">{label}</div>
-                    <div class="metric-value">{value:.2%}</div>
-                    <div class="metric-desc">{desc}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    st.caption(
+        f"Modelo evaluado: {evaluacion_nombre}. La clase positiva es CRÍTICO. "
+        f"La prueba contiene {len(test_df):,} mediciones y {test_df['ID_PC'].nunique()} equipos."
+    )
 
+    # Matriz de confusion compacta y consistente con las metricas.
     st.markdown('<div class="section-title">Matriz de confusión</div>', unsafe_allow_html=True)
-
-    cm = confusion_matrix(
-        y_test_real,
-        pred_test,
-        labels=["CRÍTICO", "ESTABLE"],
+    cm = confusion_matrix(y_test_real, pred_test, labels=["CRÍTICO", "ESTABLE"])
+    cm_df = pd.DataFrame(cm, index=["Real CRÍTICO", "Real NO CRÍTICO"], columns=["Predicción CRÍTICO", "Predicción NO CRÍTICO"])
+    st.dataframe(cm_df, use_container_width=False, width=620, hide_index=False)
+    st.caption(
+        f"TP={metricas['tp']} | FN={metricas['fn']} | FP={metricas['fp']} | TN={metricas['tn']}"
     )
 
-    cm_fig = go.Figure(
-        data=go.Heatmap(
-            z=cm,
-            x=["Predicción CRÍTICO", "Predicción ESTABLE"],
-            y=["Real CRÍTICO", "Real ESTABLE"],
-            colorscale="Blues",
-            showscale=True,
-            text=cm,
-            texttemplate="%{text}",
-            textfont=dict(size=18, color="#0f172a"),
-            hovertemplate="Real: %{y}<br>Predicción: %{x}<br>Registros: %{z}<extra></extra>",
-        )
-    )
-    cm_fig.update_layout(
-        height=370,
-        margin=dict(l=90, r=35, t=35, b=65),
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
-        xaxis=dict(side="bottom"),
-        yaxis=dict(autorange="reversed"),
-    )
-
-    cm_left, cm_right = st.columns([1, 1.1])
-    with cm_left:
-        st.plotly_chart(cm_fig, use_container_width=True)
-    with cm_right:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.markdown("**Lectura de la matriz**")
-        st.write(f"Registros evaluados: {len(y_test_real)}")
-        st.write(f"Verdaderos positivos: {metricas['tp']}")
-        st.write(f"Verdaderos negativos: {metricas['tn']}")
-        st.write(f"Falsos positivos: {metricas['fp']}")
-        st.write(f"Falsos negativos: {metricas['fn']}")
-        st.markdown(
-            "La prioridad del sistema es reducir los falsos negativos, "
-            "porque representan equipos con problema que la IA no detectó."
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # -----------------------
-    # ROC Y PR
-    # -----------------------
+    # Curvas ROC / PR
     st.markdown('<div class="section-title">Curvas de evaluación</div>', unsafe_allow_html=True)
-
     roc_col, pr_col = st.columns(2)
 
-    if modelo_supervisado is not None:
-        prob_test = modelo_supervisado.predict_proba(X_test)
-        clases_test = list(modelo_supervisado.classes_)
-        if "CRÍTICO" in clases_test:
-            idx = clases_test.index("CRÍTICO")
-            score_test = prob_test[:, idx]
-            y_test_bin = (y_test_real == "CRÍTICO").astype(int)
+    if modelo_supervisado is not None and len(np.unique(y_test_real)) == 2 and "CRÍTICO" in list(modelo_supervisado.classes_):
+        classes = list(modelo_supervisado.classes_)
+        idx_critical = classes.index("CRÍTICO")
+        prob_test = modelo_supervisado.predict_proba(X_test)[:, idx_critical]
+        y_bin = (np.asarray(y_test_real) == "CRÍTICO").astype(int)
 
-            if len(np.unique(y_test_bin)) == 2:
-                fpr, tpr, _ = roc_curve(y_test_bin, score_test)
-                roc_auc = auc(fpr, tpr)
+        fpr, tpr, _ = roc_curve(y_bin, prob_test)
+        roc_auc = auc(fpr, tpr)
+        roc_fig = go.Figure()
+        roc_fig.add_trace(go.Scatter(x=fpr, y=tpr, mode="lines", name=f"AUC {roc_auc:.3f}", line=dict(color="#1e3a8a", width=3)))
+        roc_fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Azar", line=dict(color="#94a3b8", dash="dash")))
+        roc_fig.update_layout(height=350, paper_bgcolor="#ffffff", plot_bgcolor="#ffffff", title="ROC", xaxis_title="Falsos positivos", yaxis_title="Verdaderos positivos")
+        roc_col.plotly_chart(roc_fig, use_container_width=True)
+        roc_col.metric("ROC-AUC", f"{roc_auc:.3f}")
 
-                with roc_col:
-                    roc_fig = go.Figure()
-                    roc_fig.add_trace(go.Scatter(x=fpr, y=tpr, mode="lines", name=f"AUC {roc_auc:.3f}", line=dict(color="#2563eb", width=3)))
-                    roc_fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Azar", line=dict(color="#94a3b8", dash="dash")))
-                    roc_fig.update_layout(
-                        title="ROC",
-                        height=360,
-                        margin=dict(l=45, r=20, t=50, b=45),
-                        paper_bgcolor="#ffffff",
-                        plot_bgcolor="#ffffff",
-                        xaxis_title="False Positive Rate",
-                        yaxis_title="True Positive Rate",
-                    )
-                    st.plotly_chart(roc_fig, use_container_width=True)
-                    st.caption(f"ROC-AUC: {roc_auc:.3f}")
-
-                precision_curve, recall_curve, thresholds_pr = precision_recall_curve(y_test_bin, score_test)
-                pr_auc = auc(recall_curve, precision_curve)
-
-                with pr_col:
-                    pr_fig = go.Figure()
-                    pr_fig.add_trace(go.Scatter(x=recall_curve, y=precision_curve, mode="lines", name=f"AUC {pr_auc:.3f}", line=dict(color="#0f766e", width=3)))
-                    pr_fig.update_layout(
-                        title="Precision-Recall",
-                        height=360,
-                        margin=dict(l=45, r=20, t=50, b=45),
-                        paper_bgcolor="#ffffff",
-                        plot_bgcolor="#ffffff",
-                        xaxis_title="Recall",
-                        yaxis_title="Precision",
-                    )
-                    st.plotly_chart(pr_fig, use_container_width=True)
-                    st.caption(f"PR-AUC: {pr_auc:.3f}")
-            else:
-                roc_col.info("No hay dos clases en el conjunto de prueba para calcular ROC/PR.")
-                pr_col.info("No hay dos clases en el conjunto de prueba para calcular ROC/PR.")
+        precision_curve, recall_curve, _ = precision_recall_curve(y_bin, prob_test)
+        pr_auc = average_precision_score(y_bin, prob_test)
+        pr_fig = go.Figure()
+        pr_fig.add_trace(go.Scatter(x=recall_curve, y=precision_curve, mode="lines", name=f"AUC {pr_auc:.3f}", line=dict(color="#0f766e", width=3)))
+        pr_fig.update_layout(height=350, paper_bgcolor="#ffffff", plot_bgcolor="#ffffff", title="Precision-Recall", xaxis_title="Recall", yaxis_title="Precision")
+        pr_col.plotly_chart(pr_fig, use_container_width=True)
+        pr_col.metric("PR-AUC", f"{pr_auc:.3f}")
     else:
-        roc_col.info("ROC-AUC y PR-AUC supervisados se calculan sobre el conjunto de prueba cuando ambas clases están representadas.")
-        pr_col.info("ROC-AUC y PR-AUC supervisados se calculan sobre el conjunto de prueba cuando ambas clases están representadas.")
+        roc_col.warning("ROC-AUC requiere modelo supervisado activo y ambas clases presentes en el conjunto de prueba.")
+        pr_col.warning("PR-AUC requiere modelo supervisado activo y ambas clases presentes en el conjunto de prueba.")
 
-    # -----------------------
-    # VALIDACION CRUZADA
-    # -----------------------
+    # Validacion cruzada por equipos
     st.markdown('<div class="section-title">Validación cruzada del entrenamiento</div>', unsafe_allow_html=True)
 
     if modelo_supervisado is not None:
-        min_class = min(cantidad_criticos, cantidad_estables)
-        # Con 14 equipos y 2 ejemplos de la clase minoritaria, se utilizan
-        # 2 folds. Si hay más ejemplos, se aprovechan hasta 5 folds.
-        folds = min(5, min_class)
+        group_labels = (
+            historial.groupby("ID_PC")["Clase_Real"]
+            .agg(lambda s: "CRÍTICO" if np.mean(s.eq("CRÍTICO")) >= 0.5 else "ESTABLE")
+        )
+        min_group_class = int(group_labels.value_counts().min()) if not group_labels.empty else 0
+        folds = min(5, min_group_class)
 
         if folds >= 2:
             cv_model = RandomForestClassifier(
                 n_estimators=300,
-                max_depth=8,
+                max_depth=10,
                 min_samples_split=4,
                 min_samples_leaf=2,
                 class_weight="balanced",
@@ -1498,181 +1027,126 @@ with tab_evaluacion:
             )
 
             scoring = {
-                "accuracy": "accuracy",
-                "precision": make_scorer(
-                    precision_score,
-                    pos_label="CRÍTICO",
-                    zero_division=0,
-                ),
-                "recall": make_scorer(
-                    recall_score,
-                    pos_label="CRÍTICO",
-                    zero_division=0,
-                ),
-                "f1": make_scorer(
-                    f1_score,
-                    pos_label="CRÍTICO",
-                    zero_division=0,
-                ),
+                "accuracy": make_scorer(accuracy_score),
+                "precision": make_scorer(precision_score, pos_label="CRÍTICO", zero_division=0),
+                "recall": make_scorer(recall_score, pos_label="CRÍTICO", zero_division=0),
+                "f1": make_scorer(f1_score, pos_label="CRÍTICO", zero_division=0),
             }
 
-            cv = StratifiedKFold(
-                n_splits=folds,
-                shuffle=True,
-                random_state=42,
-            )
+            try:
+                if StratifiedGroupKFold is not None:
+                    cv = StratifiedGroupKFold(n_splits=folds, shuffle=True, random_state=42)
+                    cv_iter = cv.split(X_all, historial["Clase_Real"], groups=historial["ID_PC"])
+                else:
+                    cv = GroupKFold(n_splits=folds)
+                    cv_iter = cv.split(X_all, historial["Clase_Real"], groups=historial["ID_PC"])
 
-            cv_result = cross_validate(
-                cv_model,
-                X,
-                df["Clase_Real"],
-                cv=cv,
-                scoring=scoring,
-                n_jobs=-1,
-                error_score="raise",
-            )
+                cv_results = []
+                for train_idx, val_idx in cv_iter:
+                    cv_model.fit(X_all.iloc[train_idx], historial["Clase_Real"].iloc[train_idx])
+                    val_pred = cv_model.predict(X_all.iloc[val_idx])
+                    cv_results.append(metricas_clasificacion(historial["Clase_Real"].iloc[val_idx], val_pred))
 
-            cv_table = pd.DataFrame(
-                {
-                    "Métrica": ["Accuracy", "Precision", "Recall", "F1-Score"],
-                    "Promedio": [
-                        cv_result["test_accuracy"].mean(),
-                        cv_result["test_precision"].mean(),
-                        cv_result["test_recall"].mean(),
-                        cv_result["test_f1"].mean(),
-                    ],
-                    "Desviación estándar": [
-                        cv_result["test_accuracy"].std(),
-                        cv_result["test_precision"].std(),
-                        cv_result["test_recall"].std(),
-                        cv_result["test_f1"].std(),
-                    ],
-                }
-            )
-
-            cv_display = cv_table.copy()
-            cv_display["Promedio"] = cv_display["Promedio"].map(lambda x: f"{x:.2%}")
-            cv_display["Desviación estándar"] = cv_display["Desviación estándar"].map(lambda x: f"{x:.2%}")
-            cv_display["N folds"] = folds
-            st.dataframe(cv_display, use_container_width=True, hide_index=True)
+                cv_table = pd.DataFrame([
+                    {
+                        "Metrica": "Accuracy",
+                        "Promedio": np.mean([r["accuracy"] for r in cv_results]),
+                        "Desv. estándar": np.std([r["accuracy"] for r in cv_results]),
+                    },
+                    {
+                        "Metrica": "Precision",
+                        "Promedio": np.mean([r["precision"] for r in cv_results]),
+                        "Desv. estándar": np.std([r["precision"] for r in cv_results]),
+                    },
+                    {
+                        "Metrica": "Recall",
+                        "Promedio": np.mean([r["recall"] for r in cv_results]),
+                        "Desv. estándar": np.std([r["recall"] for r in cv_results]),
+                    },
+                    {
+                        "Metrica": "F1-Score",
+                        "Promedio": np.mean([r["f1"] for r in cv_results]),
+                        "Desv. estándar": np.std([r["f1"] for r in cv_results]),
+                    },
+                ])
+                cv_display = cv_table.copy()
+                cv_display["Promedio"] = cv_display["Promedio"].map(lambda x: f"{x:.2%}")
+                cv_display["Desv. estándar"] = cv_display["Desv. estándar"].map(lambda x: f"{x:.2%}")
+                cv_display["Folds"] = folds
+                st.dataframe(cv_display, use_container_width=True, hide_index=True)
+                st.caption("La validación cruzada separa equipos completos para reducir fuga de información entre mediciones del mismo equipo.")
+            except Exception as exc:
+                st.warning(f"No fue posible completar la validación cruzada: {exc}")
         else:
-            st.info("La validación cruzada no puede ejecutarse todavía porque la clase minoritaria tiene menos de 2 registros.")
+            st.warning("Se necesita al menos 2 equipos representativos de cada clase para validación cruzada.")
     else:
-        st.info("La validación cruzada del modelo supervisado se activará cuando ambas clases estén presentes en la prueba y exista el modelo supervisado.")
+        st.warning("El modelo supervisado aún no está activo.")
 
-    # -----------------------
-    # IMPORTANCIA DE VARIABLES
-    # -----------------------
+    # Importancia de variables
     if modelo_supervisado is not None:
         st.markdown('<div class="section-title">Importancia de las variables</div>', unsafe_allow_html=True)
+        importancia = pd.DataFrame({"Variable": features, "Importancia": modelo_supervisado.feature_importances_}).sort_values("Importancia", ascending=True)
+        fig_imp = px.bar(importancia, x="Importancia", y="Variable", orientation="h")
+        fig_imp.update_layout(height=560, paper_bgcolor="#ffffff", plot_bgcolor="#ffffff", xaxis_title="Importancia relativa", yaxis_title="")
+        st.plotly_chart(fig_imp, use_container_width=True)
 
-        importancia = pd.DataFrame(
-            {
-                "Variable": features,
-                "Importancia": modelo_supervisado.feature_importances_,
-            }
-        ).sort_values("Importancia", ascending=False)
-
-        imp_fig = px.bar(
-            importancia.sort_values("Importancia", ascending=True),
-            x="Importancia",
-            y="Variable",
-            orientation="h",
-        )
-        imp_fig.update_layout(
-            height=480,
-            paper_bgcolor="#ffffff",
-            plot_bgcolor="#ffffff",
-            margin=dict(l=10, r=30, t=20, b=45),
-            xaxis_title="Importancia relativa",
-            yaxis_title="",
-        )
-        st.plotly_chart(imp_fig, use_container_width=True)
-
-        st.caption(
-            "La importancia indica cuánto contribuye cada variable a las decisiones del Random Forest. "
-            "No representa una causalidad médica ni una probabilidad individual de falla."
-        )
-
-    # -----------------------
-    # ANALISIS DE UMBRAL
-    # -----------------------
+    # Umbral
     if modelo_supervisado is not None and "CRÍTICO" in list(modelo_supervisado.classes_):
         st.markdown('<div class="section-title">Análisis del umbral de decisión</div>', unsafe_allow_html=True)
-        st.write(
-            "Se prueban distintos umbrales de probabilidad para determinar cuándo el modelo debe clasificar un registro como crítico. "
-            "Esto permite seleccionar un punto que priorice la detección de problemas sin incrementar innecesariamente los falsos positivos."
-        )
-
         classes = list(modelo_supervisado.classes_)
-        critical_idx = classes.index("CRÍTICO")
-        prob_crit_test = modelo_supervisado.predict_proba(X_test)[:, critical_idx]
-
+        idx_critical = classes.index("CRÍTICO")
+        prob_test = modelo_supervisado.predict_proba(X_test)[:, idx_critical]
         threshold_rows = []
-        for threshold in np.arange(0.30, 0.76, 0.05):
-            pred_threshold = np.where(prob_crit_test >= threshold, "CRÍTICO", "ESTABLE")
-            met = metricas_clasificacion(y_test_real, pred_threshold)
-            threshold_rows.append(
-                {
-                    "Umbral": round(float(threshold), 2),
-                    "Accuracy": met["accuracy"],
-                    "Precision": met["precision"],
-                    "Recall": met["recall"],
-                    "F1-Score": met["f1"],
-                    "Falsos negativos": met["fn"],
-                }
-            )
-
-        threshold_df = pd.DataFrame(threshold_rows)
-        threshold_display = threshold_df.copy()
-        for c in ["Accuracy", "Precision", "Recall", "F1-Score"]:
-            threshold_display[c] = threshold_display[c].map(lambda x: f"{x:.2%}")
-        st.dataframe(threshold_display, use_container_width=True, hide_index=True)
-
-    # -----------------------
-    # CONTAMINATION
-    # -----------------------
-    st.markdown('<div class="section-title">Sensibilidad del parámetro contamination</div>', unsafe_allow_html=True)
-    st.write(
-        "Se compara cómo cambia la clasificación del Isolation Forest cuando se modifica la proporción esperada de observaciones anómalas. "
-        "El valor utilizado actualmente se muestra en la tabla."
-    )
-
-    valores_prueba = sorted(set([0.05, 0.10, 0.15, 0.20, CONTAMINATION]))
-    resultados_contamination = []
-
-    for c in valores_prueba:
-        if c <= 0 or c >= 0.50:
-            continue
-
-        modelo_temp = IsolationForest(
-            n_estimators=250,
-            contamination=c,
-            random_state=42,
-            n_jobs=-1,
-        )
-        modelo_temp.fit(X_train)
-        pred_temp = modelo_temp.predict(X_test)
-        pred_temp_label = np.where(pred_temp == -1, "CRÍTICO", "ESTABLE")
-        met = metricas_clasificacion(y_test_real, pred_temp_label)
-
-        resultados_contamination.append(
-            {
-                "Contamination": c,
+        for threshold in np.arange(0.30, 0.81, 0.05):
+            pred_thr = np.where(prob_test >= threshold, "CRÍTICO", "ESTABLE")
+            met = metricas_clasificacion(y_test_real, pred_thr)
+            threshold_rows.append({
+                "Umbral": round(float(threshold), 2),
                 "Accuracy": met["accuracy"],
                 "Precision": met["precision"],
                 "Recall": met["recall"],
                 "F1-Score": met["f1"],
-                "Configuración actual": "ACTUAL" if abs(c - CONTAMINATION) < 0.0001 else "",
-            }
-        )
+                "Falsos negativos": met["fn"],
+            })
+        thr_df = pd.DataFrame(threshold_rows)
+        thr_view = thr_df.copy()
+        for col in ["Accuracy", "Precision", "Recall", "F1-Score"]:
+            thr_view[col] = thr_view[col].map(lambda x: f"{x:.2%}")
+        st.dataframe(thr_view, use_container_width=True, hide_index=True)
 
-    contamination_df = pd.DataFrame(resultados_contamination)
-    if not contamination_df.empty:
-        contamination_display = contamination_df.copy()
-        for c in ["Accuracy", "Precision", "Recall", "F1-Score"]:
-            contamination_display[c] = contamination_display[c].map(lambda x: f"{x:.2%}")
-        st.dataframe(contamination_display, use_container_width=True, hide_index=True)
+    # Contamination
+    st.markdown('<div class="section-title">Sensibilidad del parámetro contamination</div>', unsafe_allow_html=True)
+    contamination_rows = []
+    for c in sorted(set([0.05, 0.10, 0.15, 0.20, CONTAMINATION])):
+        model_temp = IsolationForest(n_estimators=250, contamination=c, random_state=42, n_jobs=-1)
+        model_temp.fit(X_train)
+        pred_temp = np.where(model_temp.predict(X_test) == -1, "CRÍTICO", "ESTABLE")
+        met = metricas_clasificacion(y_test_real, pred_temp)
+        contamination_rows.append({
+            "Contamination": c,
+            "Accuracy": met["accuracy"],
+            "Precision": met["precision"],
+            "Recall": met["recall"],
+            "F1-Score": met["f1"],
+            "Configuración actual": "ACTUAL" if abs(c - CONTAMINATION) < 0.0001 else "",
+        })
+    cont_df = pd.DataFrame(contamination_rows)
+    cont_view = cont_df.copy()
+    for col in ["Accuracy", "Precision", "Recall", "F1-Score"]:
+        cont_view[col] = cont_view[col].map(lambda x: f"{x:.2%}")
+    st.dataframe(cont_view, use_container_width=True, hide_index=True)
+
+    # Calidad de datos
+    st.markdown('<div class="section-title">Calidad y composición del conjunto de datos</div>', unsafe_allow_html=True)
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("Mediciones", f"{n_registros:,}")
+    q2.metric("Equipos", f"{n_equipos}")
+    q3.metric("Críticas", f"{cantidad_criticos:,}")
+    q4.metric("No críticas", f"{cantidad_estables:,}")
+
+    estado_dist = historial["Estado_Tecnico"].value_counts().reindex(["ESTABLE", "REGULAR", "ALERTA", "CRITICO"], fill_value=0).reset_index()
+    estado_dist.columns = ["Estado técnico", "Cantidad"]
+    st.dataframe(estado_dist, use_container_width=True, hide_index=True)
 
 
 # ============================================================
@@ -1680,14 +1154,30 @@ with tab_evaluacion:
 # ============================================================
 
 with tab_datos:
-    st.markdown('<div class="section-title">Inventario técnico completo</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="section-note">Datos originales de Supabase junto con las variables calculadas por el sistema de IA.</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="section-title">Inventario técnico actual</div>', unsafe_allow_html=True)
+    st.caption("La IA utiliza el historial completo de mediciones; esta sección muestra la última medición disponible por equipo.")
 
-    inventario = df.copy().sort_values("Riesgo_IA", ascending=False)
+    inv_cols = [
+        "ID_PC", "Fecha_Hora", "Usuario", "Modelo", "Serial", "Estado", "Nivel_Riesgo",
+        "Riesgo_IA", "Score_Tecnico", "Score_Anomalia", "Estado_Tecnico", "Uso_CPU_Porcentaje",
+        "Uso_RAM_Porcentaje", "Uso_Disco_Porcentaje", "Temperatura_CPU", "Procesos_Activos",
+        "Estado_CPU_Tecnico", "Estado_RAM_Tecnico", "Tiene_Ticket_Equipo", "Diagnostico_IA"
+    ]
+    inv_cols = [c for c in inv_cols if c in current_df.columns]
+    inventario = current_df[inv_cols].sort_values("Riesgo_IA", ascending=False)
     st.dataframe(inventario, use_container_width=True, hide_index=True)
+
+    st.markdown('<div class="section-title">Historial de mediciones</div>', unsafe_allow_html=True)
+    history_preview_cols = [
+        "ID_PC", "Fecha_Hora", "Uso_CPU_Porcentaje", "Uso_RAM_Porcentaje", "Uso_Disco_Porcentaje",
+        "CPU_Normalizado_Porcentaje", "Estado_Tecnico", "Severidad", "Tiene_Ticket", "Riesgo_IA"
+    ]
+    history_preview_cols = [c for c in history_preview_cols if c in historial.columns]
+    st.dataframe(
+        historial[history_preview_cols].sort_values("Fecha_Hora", ascending=False).head(500),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 # ============================================================
@@ -1696,6 +1186,6 @@ with tab_datos:
 
 st.divider()
 st.markdown(
-    '<div class="small-muted">AI-FleetMonitor Pro — Monitoreo, evaluación y entrenamiento del modelo de clasificación de riesgo.</div>',
+    '<div class="small-muted">AI-FleetMonitor Pro — monitoreo, entrenamiento, validación y diagnóstico técnico.</div>',
     unsafe_allow_html=True,
 )
