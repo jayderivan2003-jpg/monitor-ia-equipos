@@ -6,6 +6,7 @@ import streamlit as st
 from supabase import create_client
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_validate
+from sklearn.metrics import make_scorer
 from sklearn.metrics import (
     confusion_matrix,
     accuracy_score,
@@ -415,6 +416,61 @@ df["Componentes_Saturados"] = (
 
 
 # ============================================================
+# GUIA TECNICA DE REFERENCIA
+# ============================================================
+# Esta capa NO reemplaza al modelo de ML. Sirve para que el sistema
+# conozca explícitamente qué comportamiento es bueno, regular o malo.
+#
+# CPU / RAM:
+#   0-59.99  = BUENO
+#   60-84.99 = REGULAR
+#   85-100   = MALO
+#
+# La clasificación final de IA sigue usando el modelo supervisado
+# cuando hay suficientes tickets, pero estas variables se incorporan
+# como evidencia técnica adicional.
+
+def clasificar_recurso(valor):
+    if valor < 60:
+        return "BUENO"
+    if valor < 85:
+        return "REGULAR"
+    return "MALO"
+
+
+df["Estado_CPU_Tecnico"] = df["Uso_CPU_Porcentaje"].apply(clasificar_recurso)
+df["Estado_RAM_Tecnico"] = df["Uso_RAM_Porcentaje"].apply(clasificar_recurso)
+
+df["CPU_Mala"] = (df["Uso_CPU_Porcentaje"] >= 85).astype(int)
+df["RAM_Mala"] = (df["Uso_RAM_Porcentaje"] >= 85).astype(int)
+df["Disco_Malo"] = (df["Uso_Disco_Porcentaje"] >= 90).astype(int)
+
+df["Recursos_Malos"] = (
+    df["CPU_Mala"] +
+    df["RAM_Mala"] +
+    df["Disco_Malo"]
+)
+
+def clasificar_condicion_tecnica(row):
+    malos = int(row["Recursos_Malos"])
+    cpu = row["Uso_CPU_Porcentaje"]
+    ram = row["Uso_RAM_Porcentaje"]
+
+    if malos >= 2:
+        return "MALO"
+    if malos == 1:
+        return "MALO"
+    if cpu >= 60 or ram >= 60:
+        return "REGULAR"
+    return "BUENO"
+
+df["Condicion_Tecnica"] = df.apply(
+    clasificar_condicion_tecnica,
+    axis=1
+)
+
+
+# ============================================================
 # TENDENCIAS
 # ============================================================
 
@@ -458,6 +514,10 @@ features = [
     "Tendencia_CPU",
     "Tendencia_RAM",
     "Tendencia_Disco",
+    "CPU_Mala",
+    "RAM_Mala",
+    "Disco_Malo",
+    "Recursos_Malos",
 ]
 
 X = df[features].replace([np.inf, -np.inf], np.nan)
@@ -467,8 +527,13 @@ n_total = len(df)
 cantidad_criticos = int((df["Clase_Real"] == "CRÍTICO").sum())
 cantidad_estables = int((df["Clase_Real"] == "ESTABLE").sum())
 
+# Con el volumen actual de la flota se permite entrenar desde 10 registros,
+# siempre que existan al menos 2 ejemplos de cada clase.
+# Esto permite evaluar con 14 equipos sin esperar a acumular 20.
 puede_usar_supervisado = (
-    n_total >= 20 and cantidad_criticos >= 5 and cantidad_estables >= 5
+    n_total >= 10
+    and cantidad_criticos >= 2
+    and cantidad_estables >= 2
 )
 
 
@@ -477,12 +542,24 @@ puede_usar_supervisado = (
 # ============================================================
 
 if puede_usar_supervisado:
-    train_df, test_df = train_test_split(
-        df,
-        test_size=0.30,
-        random_state=42,
-        stratify=df["Clase_Real"],
-    )
+    # 30% de prueba. Con 14 registros suele producir 4-5 registros
+    # de evaluación y mantiene representación de ambas clases cuando
+    # cada clase tiene al menos 2 ejemplos.
+    try:
+        train_df, test_df = train_test_split(
+            df,
+            test_size=0.30,
+            random_state=42,
+            stratify=df["Clase_Real"],
+        )
+    except ValueError:
+        # Respaldo para conjuntos excepcionalmente pequeños.
+        train_df, test_df = train_test_split(
+            df,
+            test_size=max(2 / max(n_total, 1), 0.25),
+            random_state=42,
+            stratify=df["Clase_Real"],
+        )
 else:
     train_df = df.copy()
     test_df = df.copy()
@@ -766,33 +843,47 @@ df["Recomendaciones_IA"] = df.apply(generar_recomendaciones, axis=1)
 
 
 # ============================================================
-# EVALUACION: METRICAS BASE
+# EVALUACION: MODELO SUPERVISADO Y SISTEMA DESPLEGADO
 # ============================================================
 
 if modelo_supervisado is not None:
-    pred_test = modelo_supervisado.predict(X_test)
+    # Predicción pura del Random Forest sobre datos NO vistos.
+    pred_test_supervisado = modelo_supervisado.predict(X_test)
     evaluacion_nombre = "Random Forest supervisado"
 else:
     pred_test_if = modelo_anomalia.predict(X_test)
-    pred_test = np.where(pred_test_if == -1, "CRÍTICO", "ESTABLE")
+    pred_test_supervisado = np.where(pred_test_if == -1, "CRÍTICO", "ESTABLE")
     evaluacion_nombre = "Isolation Forest — evaluación preliminar"
+
+# Alias utilizado por las secciones de evaluación existentes.
+pred_test = pred_test_supervisado
 
 
 def metricas_clasificacion(y_true, y_pred):
-    cm = confusion_matrix(y_true, y_pred, labels=["CRÍTICO", "ESTABLE"])
-    tn = int(cm[1, 1])
-    fp = int(cm[1, 0])
-    fn = int(cm[0, 1])
+    cm = confusion_matrix(
+        y_true,
+        y_pred,
+        labels=["CRÍTICO", "ESTABLE"],
+    )
     tp = int(cm[0, 0])
+    fn = int(cm[0, 1])
+    fp = int(cm[1, 0])
+    tn = int(cm[1, 1])
 
     specificity = tn / (tn + fp) if (tn + fp) else 0.0
     fpr_value = fp / (fp + tn) if (fp + tn) else 0.0
 
     return {
         "accuracy": accuracy_score(y_true, y_pred),
-        "precision": precision_score(y_true, y_pred, pos_label="CRÍTICO", zero_division=0),
-        "recall": recall_score(y_true, y_pred, pos_label="CRÍTICO", zero_division=0),
-        "f1": f1_score(y_true, y_pred, pos_label="CRÍTICO", zero_division=0),
+        "precision": precision_score(
+            y_true, y_pred, pos_label="CRÍTICO", zero_division=0
+        ),
+        "recall": recall_score(
+            y_true, y_pred, pos_label="CRÍTICO", zero_division=0
+        ),
+        "f1": f1_score(
+            y_true, y_pred, pos_label="CRÍTICO", zero_division=0
+        ),
         "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
         "specificity": specificity,
         "fpr": fpr_value,
@@ -807,11 +898,37 @@ def metricas_clasificacion(y_true, y_pred):
     }
 
 
-metricas = metricas_clasificacion(y_test_real, pred_test)
+metricas = metricas_clasificacion(
+    y_test_real,
+    pred_test_supervisado,
+)
+
+
+# ============================================================
+# EVALUACION DEL SISTEMA DESPLEGADO
+# ============================================================
+# El estado general de la flota se calcula sobre TODOS los registros.
+# La matriz de confusión se calcula SOLO sobre el conjunto de prueba.
+# Por eso los conteos no tienen por qué coincidir.
+#
+# Para evitar confusión en la interfaz, mostramos explícitamente
+# cuántos registros se usaron en cada vista.
+
+if modelo_supervisado is not None:
+    prob_test_full = modelo_supervisado.predict_proba(X_test)
+    clases_test_full = list(modelo_supervisado.classes_)
+    if "CRÍTICO" in clases_test_full:
+        idx_critico_test = clases_test_full.index("CRÍTICO")
+        prob_critico_test = prob_test_full[:, idx_critico_test]
+    else:
+        prob_critico_test = np.zeros(len(test_df))
+else:
+    prob_critico_test = np.zeros(len(test_df))
 
 
 # ============================================================
 # SIDEBAR
+
 # ============================================================
 
 st.sidebar.markdown("## Diagnóstico individual")
@@ -869,14 +986,46 @@ with st.sidebar.form("form_ticket"):
 
 st.markdown('<div class="section-title">Estado general de la flota</div>', unsafe_allow_html=True)
 
-k1, k2, k3, k4, k5 = st.columns(5)
+k1, k2, k3, k4, k5, k6 = st.columns(6)
 
 k1.metric("Total equipos", f"{len(df)}")
-k2.metric("En riesgo", f"{int(df['Estado'].isin(['CRÍTICO', 'ALTO']).sum())}")
-k3.metric("Críticos", f"{int((df['Estado'] == 'CRÍTICO').sum())}")
-k4.metric("CPU promedio", f"{df['Uso_CPU_Porcentaje'].mean():.1f}%")
-k5.metric("RAM promedio", f"{df['Uso_RAM_Porcentaje'].mean():.1f}%")
+k2.metric(
+    "En riesgo",
+    f"{int((df['Riesgo_IA'] >= 35).sum())}",
+    help="Incluye estados MEDIO, ALTO y CRÍTICO según el puntaje de riesgo."
+)
+k3.metric(
+    "Críticos IA",
+    f"{int((df['Estado'] == 'CRÍTICO').sum())}",
+    help="Equipos que la lógica final de IA clasifica con riesgo >= 80/100."
+)
+k4.metric(
+    "Con ticket",
+    f"{cantidad_criticos}",
+    help="Registros utilizados como referencia de la clase CRÍTICO."
+)
+k5.metric("CPU promedio", f"{df['Uso_CPU_Porcentaje'].mean():.1f}%")
+k6.metric("RAM promedio", f"{df['Uso_RAM_Porcentaje'].mean():.1f}%")
 
+st.caption(
+    "El contador de la flota se calcula con todos los registros disponibles. "
+    "La matriz de confusión utiliza únicamente los registros reservados para prueba; "
+    "por diseño, sus totales no tienen que coincidir."
+)
+
+fleet_counts = (
+    df["Estado"]
+    .value_counts()
+    .reindex(["ESTABLE", "MEDIO", "ALTO", "CRÍTICO"], fill_value=0)
+    .reset_index()
+)
+fleet_counts.columns = ["Estado", "Cantidad"]
+
+st.dataframe(
+    fleet_counts,
+    use_container_width=True,
+    hide_index=True,
+)
 
 # ============================================================
 # DIAGNOSTICO INDIVIDUAL
@@ -929,6 +1078,45 @@ with col_rec:
     for rec in equipo["Recomendaciones_IA"]:
         st.write(f"• {rec}")
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ============================================================
+# INTERPRETACION TECNICA DE CPU Y RAM
+# ============================================================
+
+st.markdown('<div class="section-title">Referencia técnica utilizada por la IA</div>', unsafe_allow_html=True)
+guide = pd.DataFrame(
+    {
+        "Rango": [
+            "0% - 59.99%",
+            "60% - 84.99%",
+            "85% - 100%",
+        ],
+        "CPU": [
+            "BUENO",
+            "REGULAR",
+            "MALO",
+        ],
+        "RAM": [
+            "BUENO",
+            "REGULAR",
+            "MALO",
+        ],
+        "Interpretación": [
+            "Reposo o tareas ligeras.",
+            "Carga aceptable; se debe observar si permanece.",
+            "Carga alta; requiere revisión si es sostenida.",
+        ],
+    }
+)
+st.dataframe(guide, use_container_width=True, hide_index=True)
+
+st.markdown(
+    f'<div class="section-note">En la flota actual: CPU promedio {df["Uso_CPU_Porcentaje"].mean():.1f}% y RAM promedio {df["Uso_RAM_Porcentaje"].mean():.1f}%. '
+    f'Equipos con CPU en estado MALO: {(df["Estado_CPU_Tecnico"] == "MALO").sum()} | '
+    f'Equipos con RAM en estado MALO: {(df["Estado_RAM_Tecnico"] == "MALO").sum()}.</div>',
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================
@@ -1035,6 +1223,9 @@ with tab_dashboard:
             "Uso_Disco_Porcentaje",
             "Score_Tecnico",
             "Score_Anomalia",
+            "Estado_CPU_Tecnico",
+            "Estado_RAM_Tecnico",
+            "Condicion_Tecnica",
             "Tiene_Ticket",
             "Diagnostico_IA",
         ]
@@ -1073,14 +1264,15 @@ with tab_dashboard:
 with tab_evaluacion:
     st.markdown('<div class="section-title">Evaluación y entrenamiento de la IA</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Esta sección concentra la evidencia de entrenamiento, validación, rendimiento y comportamiento del modelo. Las métricas se calculan con los registros disponibles.</div>',
+        '<div class="section-note">Esta sección concentra la evidencia de entrenamiento, validación, rendimiento y comportamiento del modelo. Con 14 equipos, la evaluación supervisada se ejecuta cuando existen al menos 2 ejemplos de cada clase.</div>',
         unsafe_allow_html=True,
     )
 
     estado_entrenamiento = "Modelo supervisado activo" if modelo_supervisado is not None else "Modo preliminar: detección de anomalías"
     texto_entrenamiento = (
         f"Registros totales: {n_total} | Críticos: {cantidad_criticos} | Estables: {cantidad_estables} | "
-        f"Entrenamiento: {len(train_df)} | Prueba: {len(test_df)}"
+        f"Entrenamiento: {len(train_df)} | Prueba: {len(test_df)} | "
+        f"Método: {evaluacion_nombre}"
     )
 
     st.markdown(
@@ -1094,10 +1286,40 @@ with tab_evaluacion:
     )
 
     if modelo_supervisado is None:
-        st.info(
-            "La clasificación supervisada se habilita cuando existen al menos 20 registros "
-            "y suficiente representación de ambas clases. Hasta entonces, las métricas son una "
-            "evaluación preliminar del Isolation Forest y no deben presentarse como validación final."
+        faltan_registros = max(0, 10 - n_total)
+        faltan_criticos = max(0, 2 - cantidad_criticos)
+        faltan_estables = max(0, 2 - cantidad_estables)
+
+        st.warning(
+            f"El modelo supervisado todavía no puede entrenarse con el conjunto actual. "
+            f"Requisito operativo: mínimo 10 registros, 2 críticos y 2 estables. "
+            f"Actualmente hay {n_total} registros, {cantidad_criticos} críticos y "
+            f"{cantidad_estables} estables. "
+            f"Faltan aproximadamente {faltan_registros} registros, "
+            f"{faltan_criticos} críticos y {faltan_estables} estables."
+        )
+    else:
+        st.success(
+            f"Modelo supervisado activo. La evaluación se realiza con "
+            f"{len(train_df)} registros de entrenamiento y {len(test_df)} registros "
+            f"reservados para prueba. La matriz de confusión y las curvas representan "
+            f"exclusivamente el conjunto de prueba; el estado general de la flota usa "
+            f"los {len(df)} registros disponibles."
+        )
+
+    # -----------------------
+    # RESUMEN DEL EXPERIMENTO
+    # -----------------------
+    if modelo_supervisado is not None:
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Registros para entrenar", len(train_df))
+        s2.metric("Registros para probar", len(test_df))
+        s3.metric("Críticos en prueba", int((y_test_real == "CRÍTICO").sum()))
+        s4.metric("Estables en prueba", int((y_test_real == "ESTABLE").sum()))
+
+        st.caption(
+            "La matriz de confusión suma únicamente los registros de prueba. "
+            "Por eso su total no tiene por qué ser igual al total de equipos mostrado en el dashboard."
         )
 
     # -----------------------
@@ -1183,6 +1405,7 @@ with tab_evaluacion:
     with cm_right:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
         st.markdown("**Lectura de la matriz**")
+        st.write(f"Registros evaluados: {len(y_test_real)}")
         st.write(f"Verdaderos positivos: {metricas['tp']}")
         st.write(f"Verdaderos negativos: {metricas['tn']}")
         st.write(f"Falsos positivos: {metricas['fp']}")
@@ -1249,8 +1472,8 @@ with tab_evaluacion:
                 roc_col.info("No hay dos clases en el conjunto de prueba para calcular ROC/PR.")
                 pr_col.info("No hay dos clases en el conjunto de prueba para calcular ROC/PR.")
     else:
-        roc_col.info("ROC-AUC y PR-AUC supervisados aparecerán cuando exista suficiente historial etiquetado.")
-        pr_col.info("ROC-AUC y PR-AUC supervisados aparecerán cuando exista suficiente historial etiquetado.")
+        roc_col.info("ROC-AUC y PR-AUC supervisados se calculan sobre el conjunto de prueba cuando ambas clases están representadas.")
+        pr_col.info("ROC-AUC y PR-AUC supervisados se calculan sobre el conjunto de prueba cuando ambas clases están representadas.")
 
     # -----------------------
     # VALIDACION CRUZADA
@@ -1259,9 +1482,11 @@ with tab_evaluacion:
 
     if modelo_supervisado is not None:
         min_class = min(cantidad_criticos, cantidad_estables)
+        # Con 14 equipos y 2 ejemplos de la clase minoritaria, se utilizan
+        # 2 folds. Si hay más ejemplos, se aprovechan hasta 5 folds.
         folds = min(5, min_class)
 
-        if folds >= 3:
+        if folds >= 2:
             cv_model = RandomForestClassifier(
                 n_estimators=300,
                 max_depth=8,
@@ -1274,9 +1499,21 @@ with tab_evaluacion:
 
             scoring = {
                 "accuracy": "accuracy",
-                "precision": "precision",
-                "recall": "recall",
-                "f1": "f1",
+                "precision": make_scorer(
+                    precision_score,
+                    pos_label="CRÍTICO",
+                    zero_division=0,
+                ),
+                "recall": make_scorer(
+                    recall_score,
+                    pos_label="CRÍTICO",
+                    zero_division=0,
+                ),
+                "f1": make_scorer(
+                    f1_score,
+                    pos_label="CRÍTICO",
+                    zero_division=0,
+                ),
             }
 
             cv = StratifiedKFold(
@@ -1319,9 +1556,9 @@ with tab_evaluacion:
             cv_display["N folds"] = folds
             st.dataframe(cv_display, use_container_width=True, hide_index=True)
         else:
-            st.info("No hay suficientes registros por clase para una validación cruzada estable.")
+            st.info("La validación cruzada no puede ejecutarse todavía porque la clase minoritaria tiene menos de 2 registros.")
     else:
-        st.info("La validación cruzada del modelo supervisado se activará cuando exista suficiente historial etiquetado.")
+        st.info("La validación cruzada del modelo supervisado se activará cuando ambas clases estén presentes en la prueba y exista el modelo supervisado.")
 
     # -----------------------
     # IMPORTANCIA DE VARIABLES
