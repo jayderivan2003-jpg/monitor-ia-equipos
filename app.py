@@ -1,4 +1,69 @@
-0 10px; }
+import time
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+from supabase import create_client
+from sklearn.ensemble import IsolationForest, RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, GroupKFold
+try:
+    from sklearn.model_selection import StratifiedGroupKFold
+except ImportError:
+    StratifiedGroupKFold = None
+from sklearn.metrics import (
+    confusion_matrix,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    balanced_accuracy_score,
+    matthews_corrcoef,
+    roc_curve,
+    precision_recall_curve,
+    auc,
+    roc_auc_score,
+    average_precision_score,
+    make_scorer,
+)
+
+import plotly.express as px
+import plotly.graph_objects as go
+
+
+# ============================================================
+# CONFIGURACION
+# ============================================================
+
+st.set_page_config(
+    page_title="AI-FleetMonitor Pro",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+# ============================================================
+# ESTILO
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+        .stApp { background: #f4f6f9; color: #172033; }
+        [data-testid="stHeader"] { background: #ffffff; border-bottom: 1px solid #e2e8f0; }
+        section[data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid #e2e8f0; }
+        .block-container { max-width: 1500px; padding-top: 1.5rem; padding-bottom: 3rem; }
+
+        .app-header {
+            background: linear-gradient(110deg, #0f172a 0%, #173a72 100%);
+            border-radius: 16px; padding: 25px 30px; margin-bottom: 22px;
+            box-shadow: 0 8px 24px rgba(15,23,42,.10);
+        }
+        .app-header-title { color: #fff; font-size: 30px; font-weight: 700; margin: 0; }
+        .app-header-subtitle { color: #dbe4f0; font-size: 14px; margin-top: 7px; }
+
+        .section-title { color: #172033; font-size: 21px; font-weight: 700; margin: 16px 0 10px; }
         .section-note { color: #64748b; font-size: 13px; margin-bottom: 14px; }
         .panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; box-shadow: 0 4px 14px rgba(15,23,42,.045); }
         .status-card { border-radius: 13px; padding: 16px 18px; border: 1px solid; margin-bottom: 15px; }
