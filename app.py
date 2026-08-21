@@ -1,4 +1,4 @@
-import time
+mport time
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -472,18 +472,23 @@ y_test_real = test_df["Clase_Real"].values
 # ============================================================
 
 modelo_supervisado = None
+tiempo_entrenamiento_supervisado = 0.0
+N_ARBOLES_RF = 1000
 
 if puede_usar_supervisado and train_df["Clase_Real"].nunique() == 2:
     modelo_supervisado = RandomForestClassifier(
-        n_estimators=500,
-        max_depth=10,
+        n_estimators=N_ARBOLES_RF,
+        max_depth=12,
         min_samples_split=4,
         min_samples_leaf=2,
         class_weight="balanced",
         random_state=42,
         n_jobs=-1,
     )
+
+    inicio_entrenamiento = time.perf_counter()
     modelo_supervisado.fit(X_train, y_train)
+    tiempo_entrenamiento_supervisado = time.perf_counter() - inicio_entrenamiento
 
 
 # ============================================================
@@ -494,7 +499,7 @@ proporcion_criticos = cantidad_criticos / max(n_registros, 1)
 CONTAMINATION = float(np.clip(max(0.05, proporcion_criticos), 0.05, 0.25))
 
 modelo_anomalia = IsolationForest(
-    n_estimators=500,
+    n_estimators=1000,
     contamination=CONTAMINATION,
     max_samples="auto",
     random_state=42,
@@ -941,6 +946,19 @@ with tab_evaluacion:
             f"{train_df['ID_PC'].nunique()} equipos. Prueba: {len(test_df):,} mediciones de "
             f"{test_df['ID_PC'].nunique()} equipos. No se mezclaron equipos entre entrenamiento y prueba."
         )
+
+        st.markdown('<div class="section-title">Proceso de entrenamiento</div>', unsafe_allow_html=True)
+        e1, e2, e3, e4 = st.columns(4)
+        e1.metric("Algoritmo", "Random Forest")
+        e2.metric("Árboles entrenados", f"{N_ARBOLES_RF:,}")
+        e3.metric("Profundidad máxima", "12")
+        e4.metric("Tiempo de entrenamiento", f"{tiempo_entrenamiento_supervisado:.3f} s")
+
+        st.info(
+            f"El modelo entrenó {N_ARBOLES_RF:,} árboles usando {len(features)} variables "
+            f"predictoras, con class_weight='balanced', semilla 42 y procesamiento paralelo "
+            f"({-1} = todos los núcleos disponibles)."
+        )
     else:
         st.warning(
             f"El modelo supervisado no está activo. Registros: {n_registros}; equipos: {n_equipos}; "
@@ -1017,8 +1035,8 @@ with tab_evaluacion:
 
         if folds >= 2:
             cv_model = RandomForestClassifier(
-                n_estimators=300,
-                max_depth=10,
+                n_estimators=1000,
+                max_depth=12,
                 min_samples_split=4,
                 min_samples_leaf=2,
                 class_weight="balanced",
@@ -1074,13 +1092,81 @@ with tab_evaluacion:
                 cv_display["Desv. estándar"] = cv_display["Desv. estándar"].map(lambda x: f"{x:.2%}")
                 cv_display["Folds"] = folds
                 st.dataframe(cv_display, use_container_width=True, hide_index=True)
-                st.caption("La validación cruzada separa equipos completos para reducir fuga de información entre mediciones del mismo equipo.")
+                st.caption(
+                    f"Validación cruzada con {folds} folds y {N_ARBOLES_RF:,} árboles por fold. "
+                    "La separación se realiza por equipos completos para reducir fuga de información "
+                    "entre mediciones del mismo equipo."
+                )
             except Exception as exc:
                 st.warning(f"No fue posible completar la validación cruzada: {exc}")
         else:
             st.warning("Se necesita al menos 2 equipos representativos de cada clase para validación cruzada.")
     else:
         st.warning("El modelo supervisado aún no está activo.")
+
+    # Evidencia adicional del entrenamiento: evolución del desempeño
+    # al aumentar la cantidad de árboles. No se inventan épocas:
+    # Random Forest se entrena mediante árboles, no mediante épocas.
+    if modelo_supervisado is not None:
+        st.markdown('<div class="section-title">Evolución del entrenamiento por número de árboles</div>', unsafe_allow_html=True)
+
+        arboles_prueba = [100, 250, 500, 750, 1000]
+        evolucion = []
+
+        for n_trees in arboles_prueba:
+            rf_tmp = RandomForestClassifier(
+                n_estimators=n_trees,
+                max_depth=12,
+                min_samples_split=4,
+                min_samples_leaf=2,
+                class_weight="balanced",
+                random_state=42,
+                n_jobs=-1,
+            )
+            rf_tmp.fit(X_train, y_train)
+            pred_tmp = rf_tmp.predict(X_test)
+            met_tmp = metricas_clasificacion(y_test_real, pred_tmp)
+            evolucion.append({
+                "Árboles": n_trees,
+                "Accuracy": met_tmp["accuracy"],
+                "Precision": met_tmp["precision"],
+                "Recall": met_tmp["recall"],
+                "F1-Score": met_tmp["f1"],
+            })
+
+        evolucion_df = pd.DataFrame(evolucion)
+        evolucion_view = evolucion_df.copy()
+        for col in ["Accuracy", "Precision", "Recall", "F1-Score"]:
+            evolucion_view[col] = evolucion_view[col].map(lambda x: f"{x:.2%}")
+
+        st.dataframe(evolucion_view, use_container_width=True, hide_index=True)
+
+        evol_fig = go.Figure()
+        for metric_name in ["Accuracy", "Precision", "Recall", "F1-Score"]:
+            evol_fig.add_trace(
+                go.Scatter(
+                    x=evolucion_df["Árboles"],
+                    y=evolucion_df[metric_name],
+                    mode="lines+markers",
+                    name=metric_name,
+                )
+            )
+        evol_fig.update_layout(
+            height=380,
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
+            title="Desempeño según cantidad de árboles",
+            xaxis_title="Número de árboles",
+            yaxis_title="Métrica",
+            yaxis=dict(range=[0, 1]),
+        )
+        st.plotly_chart(evol_fig, use_container_width=True)
+
+        st.caption(
+            "Esta comparación permite evidenciar que el modelo fue evaluado con diferentes "
+            "niveles de entrenamiento. En Random Forest se habla de árboles/estimadores, "
+            "no de épocas como en redes neuronales."
+        )
 
     # Importancia de variables
     if modelo_supervisado is not None:
