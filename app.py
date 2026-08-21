@@ -5,6 +5,10 @@ import streamlit as st
 
 from supabase import create_client
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.inspection import permutation_importance
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedKFold, GroupKFold
 try:
@@ -362,6 +366,10 @@ historial["Componentes_Saturados"] = (
 # FEATURES
 # ============================================================
 
+# Variables predictoras SIN copiar directamente la etiqueta.
+# Se excluyen CPU_Mala/RAM_Mala/Disco_Malo/Componentes_Saturados/
+# Recursos_Malos porque se construyen con los mismos umbrales usados
+# para definir CRÍTICO y producirían fuga de información (data leakage).
 features = [
     "Uso_CPU_Porcentaje",
     "Uso_RAM_Porcentaje",
@@ -374,11 +382,6 @@ features = [
     "Promedio_Recursos",
     "CPU_RAM_Conjunta",
     "Diferencia_CPU",
-    "Componentes_Saturados",
-    "CPU_Mala",
-    "RAM_Mala",
-    "Disco_Malo",
-    "Recursos_Malos",
     "Tendencia_CPU",
     "Tendencia_RAM",
     "Tendencia_Disco",
@@ -398,11 +401,16 @@ n_equipos = historial["ID_PC"].nunique()
 cantidad_criticos = int(historial["Clase_Real"].eq("CRÍTICO").sum())
 cantidad_estables = int(historial["Clase_Real"].eq("ESTABLE").sum())
 
+# Para una evaluación académica representativa no se entrena con 7 registros.
+# Requerimos suficientes equipos y mediciones para separar entrenamiento/prueba.
+MIN_REGISTROS = 100
+MIN_EQUIPOS = 10
+
 puede_usar_supervisado = (
-    n_registros >= 10
-    and cantidad_criticos >= 2
-    and cantidad_estables >= 2
-    and n_equipos >= 4
+    n_registros >= MIN_REGISTROS
+    and n_equipos >= MIN_EQUIPOS
+    and cantidad_criticos >= 10
+    and cantidad_estables >= 10
 )
 
 
@@ -468,28 +476,44 @@ y_test_real = test_df["Clase_Real"].values
 
 
 # ============================================================
-# RANDOM FOREST
+# RED NEURONAL SUPERVISADA
 # ============================================================
-
+# Aquí sí existen ÉPOCAS reales de entrenamiento.
+# La red usa escalado + dos capas ocultas y early stopping.
+# La evaluación final se hace con equipos que no participaron
+# en el entrenamiento.
 modelo_supervisado = None
 tiempo_entrenamiento_supervisado = 0.0
-N_ARBOLES_RF = 1000
+EPOCAS_MAX = 500
+ARQUITECTURA_IA = "(64, 32)"
 
 if puede_usar_supervisado and train_df["Clase_Real"].nunique() == 2:
-    modelo_supervisado = RandomForestClassifier(
-        n_estimators=N_ARBOLES_RF,
-        max_depth=12,
-        min_samples_split=4,
-        min_samples_leaf=2,
-        class_weight="balanced",
-        random_state=42,
-        n_jobs=-1,
-    )
+    modelo_supervisado = Pipeline([
+        ("escalado", StandardScaler()),
+        ("red_neuronal", MLPClassifier(
+            hidden_layer_sizes=(64, 32),
+            activation="relu",
+            solver="adam",
+            alpha=0.0005,
+            learning_rate_init=0.001,
+            max_iter=EPOCAS_MAX,
+            early_stopping=True,
+            validation_fraction=0.20,
+            n_iter_no_change=35,
+            random_state=42,
+        )),
+    ])
 
     inicio_entrenamiento = time.perf_counter()
     modelo_supervisado.fit(X_train, y_train)
     tiempo_entrenamiento_supervisado = time.perf_counter() - inicio_entrenamiento
 
+    red_entrenada = modelo_supervisado.named_steps["red_neuronal"]
+    epocas_ejecutadas = int(red_entrenada.n_iter_)
+    perdida_final = float(red_entrenada.loss_curve_[-1]) if red_entrenada.loss_curve_ else np.nan
+else:
+    epocas_ejecutadas = 0
+    perdida_final = np.nan
 
 # ============================================================
 # ISOLATION FOREST
@@ -747,7 +771,7 @@ def metricas_clasificacion(y_true, y_pred):
 
 if modelo_supervisado is not None:
     pred_test = modelo_supervisado.predict(X_test)
-    evaluacion_nombre = "Random Forest supervisado"
+    evaluacion_nombre = "Red neuronal MLP supervisada"
 else:
     pred_test = np.where(modelo_anomalia.predict(X_test) == -1, "CRÍTICO", "ESTABLE")
     evaluacion_nombre = "Isolation Forest como evaluacion preliminar"
@@ -940,6 +964,14 @@ with tab_evaluacion:
         unsafe_allow_html=True,
     )
 
+    if modelo_supervisado is None:
+        st.warning(
+            f"Evaluación supervisada bloqueada para evitar resultados engañosos. "
+            f"Actualmente hay {n_registros:,} mediciones y {n_equipos} equipos. "
+            f"Se requieren al menos {MIN_REGISTROS:,} mediciones y {MIN_EQUIPOS} equipos, "
+            "con ambas clases presentes. Con 7 registros no es válido mostrar 100 % como evidencia de asertividad."
+        )
+
     if modelo_supervisado is not None:
         st.success(
             f"Modelo supervisado activo. Entrenamiento: {len(train_df):,} mediciones de "
@@ -949,15 +981,16 @@ with tab_evaluacion:
 
         st.markdown('<div class="section-title">Proceso de entrenamiento</div>', unsafe_allow_html=True)
         e1, e2, e3, e4 = st.columns(4)
-        e1.metric("Algoritmo", "Random Forest")
-        e2.metric("Árboles entrenados", f"{N_ARBOLES_RF:,}")
-        e3.metric("Profundidad máxima", "12")
+        e1.metric("Algoritmo", "Red neuronal MLP")
+        e2.metric("Épocas ejecutadas", f"{epocas_ejecutadas:,} / {EPOCAS_MAX:,}")
+        e3.metric("Arquitectura", ARQUITECTURA_IA)
         e4.metric("Tiempo de entrenamiento", f"{tiempo_entrenamiento_supervisado:.3f} s")
 
         st.info(
-            f"El modelo entrenó {N_ARBOLES_RF:,} árboles usando {len(features)} variables "
-            f"predictoras, con class_weight='balanced', semilla 42 y procesamiento paralelo "
-            f"({-1} = todos los núcleos disponibles)."
+            f"La IA entrenó durante {epocas_ejecutadas:,} épocas como máximo {EPOCAS_MAX:,}, "
+            f"usando {len(features)} variables predictoras. Se aplicó escalado, Adam, "
+            f"validación interna del 20 % y early stopping para detener el entrenamiento "
+            f"cuando la pérdida de validación deja de mejorar."
         )
     else:
         st.warning(
@@ -1023,7 +1056,7 @@ with tab_evaluacion:
         pr_col.warning("PR-AUC requiere modelo supervisado activo y ambas clases presentes en el conjunto de prueba.")
 
     # Validacion cruzada por equipos
-    st.markdown('<div class="section-title">Validación cruzada del entrenamiento</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Validación cruzada por equipos</div>', unsafe_allow_html=True)
 
     if modelo_supervisado is not None:
         group_labels = (
@@ -1034,15 +1067,21 @@ with tab_evaluacion:
         folds = min(5, min_group_class)
 
         if folds >= 2:
-            cv_model = RandomForestClassifier(
-                n_estimators=1000,
-                max_depth=12,
-                min_samples_split=4,
-                min_samples_leaf=2,
-                class_weight="balanced",
-                random_state=42,
-                n_jobs=-1,
-            )
+            cv_model = Pipeline([
+                ("escalado", StandardScaler()),
+                ("red_neuronal", MLPClassifier(
+                    hidden_layer_sizes=(64, 32),
+                    activation="relu",
+                    solver="adam",
+                    alpha=0.0005,
+                    learning_rate_init=0.001,
+                    max_iter=500,
+                    early_stopping=True,
+                    validation_fraction=0.20,
+                    n_iter_no_change=35,
+                    random_state=42,
+                )),
+            ])
 
             scoring = {
                 "accuracy": make_scorer(accuracy_score),
@@ -1093,7 +1132,7 @@ with tab_evaluacion:
                 cv_display["Folds"] = folds
                 st.dataframe(cv_display, use_container_width=True, hide_index=True)
                 st.caption(
-                    f"Validación cruzada con {folds} folds y {N_ARBOLES_RF:,} árboles por fold. "
+                    f"Validación cruzada con {folds} folds y la misma arquitectura MLP de {EPOCAS_MAX:,} épocas máximas por fold. "
                     "La separación se realiza por equipos completos para reducir fuga de información "
                     "entre mediciones del mismo equipo."
                 )
@@ -1102,79 +1141,82 @@ with tab_evaluacion:
         else:
             st.warning("Se necesita al menos 2 equipos representativos de cada clase para validación cruzada.")
     else:
-        st.warning("El modelo supervisado aún no está activo.")
+        st.warning("La IA supervisada aún no se activa porque faltan datos suficientes.")
 
-    # Evidencia adicional del entrenamiento: evolución del desempeño
-    # al aumentar la cantidad de árboles. No se inventan épocas:
-    # Random Forest se entrena mediante árboles, no mediante épocas.
+    # Evidencia REAL del entrenamiento: pérdida por época.
+    # A diferencia de Random Forest, MLP sí se entrena por épocas.
     if modelo_supervisado is not None:
-        st.markdown('<div class="section-title">Evolución del entrenamiento por número de árboles</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Evolución real del entrenamiento por épocas</div>', unsafe_allow_html=True)
 
-        arboles_prueba = [100, 250, 500, 750, 1000]
-        evolucion = []
+        red_entrenada = modelo_supervisado.named_steps["red_neuronal"]
+        loss_curve = red_entrenada.loss_curve_
 
-        for n_trees in arboles_prueba:
-            rf_tmp = RandomForestClassifier(
-                n_estimators=n_trees,
-                max_depth=12,
-                min_samples_split=4,
-                min_samples_leaf=2,
-                class_weight="balanced",
-                random_state=42,
-                n_jobs=-1,
-            )
-            rf_tmp.fit(X_train, y_train)
-            pred_tmp = rf_tmp.predict(X_test)
-            met_tmp = metricas_clasificacion(y_test_real, pred_tmp)
-            evolucion.append({
-                "Árboles": n_trees,
-                "Accuracy": met_tmp["accuracy"],
-                "Precision": met_tmp["precision"],
-                "Recall": met_tmp["recall"],
-                "F1-Score": met_tmp["f1"],
+        if loss_curve:
+            loss_df = pd.DataFrame({
+                "Época": np.arange(1, len(loss_curve) + 1),
+                "Pérdida de entrenamiento": loss_curve,
             })
 
-        evolucion_df = pd.DataFrame(evolucion)
-        evolucion_view = evolucion_df.copy()
-        for col in ["Accuracy", "Precision", "Recall", "F1-Score"]:
-            evolucion_view[col] = evolucion_view[col].map(lambda x: f"{x:.2%}")
-
-        st.dataframe(evolucion_view, use_container_width=True, hide_index=True)
-
-        evol_fig = go.Figure()
-        for metric_name in ["Accuracy", "Precision", "Recall", "F1-Score"]:
-            evol_fig.add_trace(
+            fig_loss = go.Figure()
+            fig_loss.add_trace(
                 go.Scatter(
-                    x=evolucion_df["Árboles"],
-                    y=evolucion_df[metric_name],
-                    mode="lines+markers",
-                    name=metric_name,
+                    x=loss_df["Época"],
+                    y=loss_df["Pérdida de entrenamiento"],
+                    mode="lines",
+                    name="Pérdida",
                 )
             )
-        evol_fig.update_layout(
-            height=380,
-            paper_bgcolor="#ffffff",
-            plot_bgcolor="#ffffff",
-            title="Desempeño según cantidad de árboles",
-            xaxis_title="Número de árboles",
-            yaxis_title="Métrica",
-            yaxis=dict(range=[0, 1]),
-        )
-        st.plotly_chart(evol_fig, use_container_width=True)
+            fig_loss.update_layout(
+                height=380,
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#ffffff",
+                title="Pérdida durante el entrenamiento",
+                xaxis_title="Época",
+                yaxis_title="Loss",
+            )
+            st.plotly_chart(fig_loss, use_container_width=True)
 
-        st.caption(
-            "Esta comparación permite evidenciar que el modelo fue evaluado con diferentes "
-            "niveles de entrenamiento. En Random Forest se habla de árboles/estimadores, "
-            "no de épocas como en redes neuronales."
-        )
+            st.caption(
+                f"El entrenamiento ejecutó {len(loss_curve):,} épocas. "
+                f"La pérdida final fue {loss_curve[-1]:.6f}. "
+                "Early stopping evita seguir entrenando cuando el rendimiento de validación deja de mejorar."
+            )
 
-    # Importancia de variables
-    if modelo_supervisado is not None:
+        # Importancia de variables mediante permutation importance.
+    # MLP no tiene feature_importances_ como Random Forest.
+    if modelo_supervisado is not None and len(test_df) >= 20:
         st.markdown('<div class="section-title">Importancia de las variables</div>', unsafe_allow_html=True)
-        importancia = pd.DataFrame({"Variable": features, "Importancia": modelo_supervisado.feature_importances_}).sort_values("Importancia", ascending=True)
-        fig_imp = px.bar(importancia, x="Importancia", y="Variable", orientation="h")
-        fig_imp.update_layout(height=560, paper_bgcolor="#ffffff", plot_bgcolor="#ffffff", xaxis_title="Importancia relativa", yaxis_title="")
-        st.plotly_chart(fig_imp, use_container_width=True)
+        try:
+            perm = permutation_importance(
+                modelo_supervisado,
+                X_test,
+                y_test_real,
+                n_repeats=5,
+                random_state=42,
+                scoring="f1_weighted",
+            )
+            importancia = pd.DataFrame({
+                "Variable": features,
+                "Importancia": perm.importances_mean,
+            }).sort_values("Importancia", ascending=True)
+
+            fig_imp = px.bar(
+                importancia,
+                x="Importancia",
+                y="Variable",
+                orientation="h",
+            )
+            fig_imp.update_layout(
+                height=650,
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#ffffff",
+                title="Importancia por permutación en el conjunto de prueba",
+                xaxis_title="Disminución media del F1 al permutar",
+                yaxis_title="",
+            )
+            st.plotly_chart(fig_imp, use_container_width=True)
+        except Exception as exc:
+            st.warning(f"No fue posible calcular la importancia de variables: {exc}")
 
     # Umbral
     if modelo_supervisado is not None and "CRÍTICO" in list(modelo_supervisado.classes_):
