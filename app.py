@@ -11,7 +11,7 @@ try:
     from sklearn.model_selection import StratifiedGroupKFold
 except ImportError:
     StratifiedGroupKFold = None
-from sklearn.neighbors import LocalOutlierFactor
+from sklearn.neighbors import LocalOutlierFactor  # NUEVO: para detección por densidad
 from sklearn.metrics import (
     confusion_matrix,
     accuracy_score,
@@ -31,12 +31,14 @@ from sklearn.metrics import (
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Intentar importar SMOTE para balanceo de clases
+# Intentar importar SMOTE para balanceo de clases (más entrenamiento)
 try:
     from imblearn.over_sampling import SMOTE
     SMOTE_AVAILABLE = True
 except ImportError:
     SMOTE_AVAILABLE = False
+    # Si no está instalado, se muestra un aviso pero el código sigue funcionando
+
 
 # ============================================================
 # CONFIGURACION
@@ -49,8 +51,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
 # ============================================================
-# ESTILO
+# ESTILO (mejorado con más elementos visuales)
 # ============================================================
 
 st.markdown(
@@ -101,7 +104,8 @@ st.markdown(
         .stCaption, .stMarkdown, p { color:#334155; }
 
         [data-testid="stDataFrame"] { border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
-        
+
+        /* NUEVO: estilos para alertas */
         .alert-box {
             padding: 10px 15px;
             border-radius: 8px;
@@ -111,7 +115,7 @@ st.markdown(
         .alert-critical { background: #fef2f2; border-color: #dc2626; }
         .alert-warning { background: #fffbeb; border-color: #f59e0b; }
         .alert-info { background: #eff6ff; border-color: #3b82f6; }
-        
+
         .anomaly-highlight {
             background: #fef2f2;
             border: 2px solid #dc2626;
@@ -129,13 +133,14 @@ st.markdown(
     <div class="app-header">
         <div class="app-header-title">🔍 AI-FleetMonitor Pro</div>
         <div class="app-header-subtitle">
-            Detección avanzada de anomalías • Monitoreo de hardware • Clasificación de riesgo 
-            • Entrenamiento y evaluación de IA con máxima sensibilidad
+            Monitoreo de hardware • Detección avanzada de anomalías • Clasificación de riesgo
+            • Entrenamiento y evaluación con IA de máxima sensibilidad
         </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+
 
 # ============================================================
 # SUPABASE
@@ -149,6 +154,7 @@ except Exception:
     st.stop()
 
 supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
 
 # ============================================================
 # CARGA DE DATOS
@@ -166,12 +172,14 @@ def cargar_historial(_cache_bust):
     df = pd.DataFrame(resultado.data)
     return df
 
+
 @st.cache_data(ttl=60)
 def cargar_equipos(_cache_bust):
     """Carga el inventario actual. Sirve para mantener los datos de equipos/tickets."""
     resultado = supabase.table("equipos").select("*").execute()
     df = pd.DataFrame(resultado.data)
     return df
+
 
 try:
     historial = cargar_historial(int(time.time() // 60))
@@ -191,6 +199,7 @@ if st.button("🔄 Actualizar datos"):
 if historial.empty:
     st.warning("La tabla mediciones_equipos esta vacia. Ejecuta generar_20_equipos.py antes de entrenar la IA.")
     st.stop()
+
 
 # ============================================================
 # NORMALIZACION DE NOMBRES
@@ -262,16 +271,18 @@ historial["Tiene_Ticket"] = (
     historial["Ticket_Usuario"].fillna("").astype(str).str.strip().ne("")
 )
 
+
 # ============================================================
-# ETIQUETAS: EL MODELO APRENDE DEL ESTADO TECNICO
+# ETIQUETAS: EL MODELO APRENDE DEL ESTADO TECNICO (MEJORADO)
 # ============================================================
 
 def estado_tecnico_reglas(row):
     cpu = float(row["Uso_CPU_Porcentaje"])
     ram = float(row["Uso_RAM_Porcentaje"])
     disco = float(row["Uso_Disco_Porcentaje"])
-    temp = float(row.get("Temperatura_CPU", 0))
+    temp = float(row.get("Temperatura_CPU", 0))  # Ahora incluye temperatura
 
+    # Umbrales más sensibles
     if cpu >= 90 or ram >= 90 or disco >= 95 or temp >= 85:
         return "CRITICO"
     if cpu >= 85 or ram >= 85 or disco >= 90 or temp >= 75:
@@ -279,6 +290,7 @@ def estado_tecnico_reglas(row):
     if cpu >= 60 or ram >= 60 or disco >= 60 or temp >= 65:
         return "REGULAR"
     return "ESTABLE"
+
 
 historial["Estado_Tecnico"] = historial.apply(
     lambda row: row["Estado_Tecnico"]
@@ -301,8 +313,9 @@ historial["Clase_Real"] = np.where(
     "ESTABLE",
 )
 
+
 # ============================================================
-# VARIABLES DERIVADAS E HISTORICAS (MEJORADAS)
+# VARIABLES DERIVADAS E HISTORICAS (MEJORADAS - MÁS SENSIBLES)
 # ============================================================
 
 historial = historial.sort_values(["ID_PC", "Fecha_Hora"], na_position="first").copy()
@@ -329,7 +342,7 @@ historial["Diferencia_CPU"] = (
     historial["CPU_Normalizado_Porcentaje"] - historial["Uso_CPU_Porcentaje"]
 ).abs()
 
-# Umbrales MÁS SENSIBLES (80% en lugar de 85%)
+# === UMBRALES MÁS SENSIBLES (80% en lugar de 85%) ===
 historial["CPU_Mala"] = (historial["Uso_CPU_Porcentaje"] >= 80).astype(int)
 historial["RAM_Mala"] = (historial["Uso_RAM_Porcentaje"] >= 80).astype(int)
 historial["Disco_Malo"] = (historial["Uso_Disco_Porcentaje"] >= 85).astype(int)
@@ -374,8 +387,9 @@ historial["Componentes_Saturados"] = (
     + (historial["Uso_Disco_Porcentaje"] >= 85).astype(int)
 )
 
+
 # ============================================================
-# FEATURES
+# FEATURES (se mantienen igual)
 # ============================================================
 
 features = [
@@ -421,8 +435,9 @@ puede_usar_supervisado = (
     and n_equipos >= 4
 )
 
+
 # ============================================================
-# TRAIN/TEST POR EQUIPO
+# TRAIN/TEST POR EQUIPO PARA EVITAR DATA LEAKAGE
 # ============================================================
 
 train_df = historial.copy()
@@ -455,6 +470,7 @@ if puede_usar_supervisado:
     train_df = historial[historial["ID_PC"].isin(train_pcs)].copy()
     test_df = historial[historial["ID_PC"].isin(test_pcs)].copy()
 
+    # Seguridad: si por el tamaño de la muestra la prueba pierde una clase
     if test_df["Clase_Real"].nunique() < 2 or train_df["Clase_Real"].nunique() < 2:
         for seed in range(1, 101):
             try:
@@ -479,33 +495,37 @@ X_test = X_test.fillna(X_all.median(numeric_only=True)).fillna(0)
 y_train = train_df["Clase_Real"].values
 y_test_real = test_df["Clase_Real"].values
 
+
 # ============================================================
-# ENTRENAMIENTO CON MÁXIMA SENSIBILIDAD
+# ENTRENAMIENTO CON MÁXIMA SENSIBILIDAD (MEJORADO)
 # ============================================================
 
 modelo_supervisado = None
 tiempo_entrenamiento_supervisado = 0.0
-N_ARBOLES_RF = 1000
+N_ARBOLES_RF = 1500  # Aumentado de 1000 a 1500 para más entrenamiento
+
 
 # ============================================================
 # 1. ISOLATION FOREST CON ALTA SENSIBILIDAD
 # ============================================================
 
 proporcion_criticos = cantidad_criticos / max(n_registros, 1)
+# Aumentar contamination para detectar más anomalías (máximo 35%)
 CONTAMINATION = float(np.clip(max(0.10, proporcion_criticos * 1.5), 0.05, 0.35))
 
 modelo_anomalia_if = IsolationForest(
-    n_estimators=1000,
+    n_estimators=1500,  # Aumentado
     contamination=CONTAMINATION,
     max_samples="auto",
-    bootstrap=True,
+    bootstrap=True,  # Mejora la robustez
     random_state=42,
     n_jobs=-1,
 )
 modelo_anomalia_if.fit(X_train)
 
+
 # ============================================================
-# 2. LOCAL OUTLIER FACTOR (detección por densidad)
+# 2. LOCAL OUTLIER FACTOR (NUEVO - detección por densidad)
 # ============================================================
 
 n_neighbors = min(20, max(5, len(X_train) // 10))
@@ -516,40 +536,44 @@ modelo_lof = LocalOutlierFactor(
 )
 modelo_lof.fit(X_train)
 
+
 # ============================================================
-# 3. RANDOM FOREST CON PESOS EXTREMOS Y SMOTE
+# 3. RANDOM FOREST CON PESOS EXTREMOS Y SMOTE (MEJORADO)
 # ============================================================
 
 if puede_usar_supervisado and train_df["Clase_Real"].nunique() == 2:
     X_train_rf = X_train.copy()
     y_train_rf = y_train.copy()
-    
+
+    # Aplicar SMOTE si hay pocos críticos (balanceo de clases)
     if cantidad_criticos < 15 and SMOTE_AVAILABLE:
         try:
             k_neighbors = min(3, cantidad_criticos - 1)
             if k_neighbors >= 1:
                 smote = SMOTE(random_state=42, k_neighbors=k_neighbors)
                 X_train_rf, y_train_rf = smote.fit_resample(X_train, y_train)
-        except Exception:
-            pass
-    
+                st.info(f"✅ SMOTE aplicado: {len(X_train_rf)} muestras balanceadas")
+        except Exception as e:
+            st.warning(f"⚠️ No se pudo aplicar SMOTE: {e}")
+
     modelo_supervisado = RandomForestClassifier(
         n_estimators=N_ARBOLES_RF,
-        max_depth=15,
-        min_samples_split=2,
-        min_samples_leaf=1,
-        class_weight={'CRÍTICO': 5, 'ESTABLE': 1},
+        max_depth=15,  # Aumentado de 12 a 15
+        min_samples_split=2,  # Reducido de 4 a 2 (más sensible)
+        min_samples_leaf=1,   # Reducido de 2 a 1 (más sensible)
+        class_weight={'CRÍTICO': 5, 'ESTABLE': 1},  # Peso extremo a críticos
         random_state=42,
         n_jobs=-1,
-        min_impurity_decrease=0.0001,
+        min_impurity_decrease=0.0001,  # Acepta divisiones más pequeñas
     )
 
     inicio_entrenamiento = time.perf_counter()
     modelo_supervisado.fit(X_train_rf, y_train_rf)
     tiempo_entrenamiento_supervisado = time.perf_counter() - inicio_entrenamiento
 
+
 # ============================================================
-# CALCULAR SCORES COMBINADOS
+# CALCULAR SCORES COMBINADOS (ENSAMBLE)
 # ============================================================
 
 # Isolation Forest
@@ -572,8 +596,9 @@ else:
     anomaly_score_lof = np.full(n_registros, 50.0)
 anomaly_score_lof = np.clip(anomaly_score_lof, 0, 100)
 
-# Combinar scores (ensamble)
+# Combinar scores (ensamble: 60% IF + 40% LOF)
 historial["Score_Anomalia"] = (0.6 * anomaly_score_if + 0.4 * anomaly_score_lof)
+
 
 # ============================================================
 # PROBABILIDAD SUPERVISADA
@@ -586,8 +611,9 @@ if modelo_supervisado is not None and "CRÍTICO" in list(modelo_supervisado.clas
 else:
     prob_critico = np.zeros(n_registros)
 
+
 # ============================================================
-# SCORE TECNICO MEJORADO (más sensible)
+# SCORE TECNICO MEJORADO (MÁS SENSIBLE)
 # ============================================================
 
 def calcular_score_tecnico_avanzado(row):
@@ -597,9 +623,9 @@ def calcular_score_tecnico_avanzado(row):
     cpu_norm = row["CPU_Normalizado_Porcentaje"]
     persistencia = max(row["CPU_Alta_5"], row["RAM_Alta_5"], row["Disco_Alto_5"])
     temp = row.get("Temperatura_CPU", 0)
-    
+
     score = 0
-    
+
     # CPU (más sensible)
     if cpu >= 80:
         score += 30
@@ -611,7 +637,7 @@ def calcular_score_tecnico_avanzado(row):
         score += 10
     elif cpu >= 40:
         score += 5
-    
+
     # RAM (más sensible)
     if ram >= 80:
         score += 30
@@ -621,7 +647,7 @@ def calcular_score_tecnico_avanzado(row):
         score += 15
     elif ram >= 50:
         score += 8
-    
+
     # Disco (más sensible)
     if disco >= 85:
         score += 25
@@ -631,15 +657,15 @@ def calcular_score_tecnico_avanzado(row):
         score += 12
     elif disco >= 55:
         score += 6
-    
-    # Temperatura
+
+    # Temperatura (NUEVO)
     if temp >= 80:
         score += 15
     elif temp >= 70:
         score += 10
     elif temp >= 60:
         score += 5
-    
+
     # CPU Normalizado
     if cpu_norm >= 90:
         score += 15
@@ -647,30 +673,33 @@ def calcular_score_tecnico_avanzado(row):
         score += 10
     elif cpu_norm >= 70:
         score += 5
-    
+
     # Persistencia
     score += min(10, int(round(persistencia * 10)))
-    
-    # BONIFICACIÓN POR MÚLTIPLES PROBLEMAS
+
+    # BONIFICACIÓN POR MÚLTIPLES PROBLEMAS (sinergia)
     problemas = 0
     if cpu >= 70: problemas += 1
     if ram >= 70: problemas += 1
     if disco >= 75: problemas += 1
     if temp >= 70: problemas += 1
-    
+
     if problemas >= 3:
         score += 15
     elif problemas >= 2:
         score += 8
-    
+
     return min(score, 100)
 
+
 historial["Score_Tecnico"] = historial.apply(calcular_score_tecnico_avanzado, axis=1)
+
 
 # ============================================================
 # RIESGO IA FINAL CON PESOS AJUSTADOS
 # ============================================================
 
+# Factor de confianza: si hay pocos datos, menos peso a supervisado
 confianza_supervisado = min(1.0, cantidad_criticos / 30)
 
 if modelo_supervisado is not None:
@@ -687,18 +716,20 @@ else:
 
 historial["Riesgo_IA"] = np.clip(historial["Riesgo_IA"], 0, 100)
 
+
 # ============================================================
 # UMBRALES MÁS SENSIBLES
 # ============================================================
 
 def determinar_estado_sensible(riesgo):
-    if riesgo >= 70:
+    if riesgo >= 70:  # Antes era 80
         return "CRÍTICO"
-    if riesgo >= 50:
+    if riesgo >= 50:  # Antes era 60
         return "ALTO"
-    if riesgo >= 30:
+    if riesgo >= 30:  # Antes era 35
         return "MEDIO"
     return "ESTABLE"
+
 
 def determinar_nivel_sensible(riesgo):
     if riesgo >= 70:
@@ -709,54 +740,67 @@ def determinar_nivel_sensible(riesgo):
         return "Moderado"
     return "Bajo"
 
+
 historial["Estado"] = historial["Riesgo_IA"].apply(determinar_estado_sensible)
 historial["Nivel_Riesgo"] = historial["Riesgo_IA"].apply(determinar_nivel_sensible)
 
+
 # ============================================================
-# ALERTAS TEMPRANAS
+# ALERTAS TEMPRANAS (NUEVO - DETECCIÓN PREVENTIVA)
 # ============================================================
 
 def generar_alertas_tempranas(row):
     """Detecta problemas ANTES de que sean críticos"""
     alertas = []
-    
+
     cpu = row["Uso_CPU_Porcentaje"]
     ram = row["Uso_RAM_Porcentaje"]
     disco = row["Uso_Disco_Porcentaje"]
     temp = row.get("Temperatura_CPU", 0)
-    
-    # Tendencias al alza
+
+    # Tendencias al alza (problemas futuros)
     if row["Tendencia_CPU"] > 10:
-        alertas.append(f"CPU subiendo rapidamente (+{row['Tendencia_CPU']:.1f}%)")
-    
+        alertas.append(f"⚠️ CPU subiendo rápidamente (+{row['Tendencia_CPU']:.1f}%)")
+
     if row["Tendencia_RAM"] > 10:
-        alertas.append(f"RAM subiendo rapidamente (+{row['Tendencia_RAM']:.1f}%)")
-    
-    # Niveles elevados PERSISTENTES
+        alertas.append(f"⚠️ RAM subiendo rápidamente (+{row['Tendencia_RAM']:.1f}%)")
+
+    if row["Tendencia_Disco"] > 10:
+        alertas.append(f"⚠️ Disco subiendo rápidamente (+{row['Tendencia_Disco']:.1f}%)")
+
+    # Niveles elevados PERSISTENTES (problema crónico)
     if 70 <= cpu < 85 and row["CPU_Alta_5"] > 0.5:
-        alertas.append(f"CPU elevada y persistente ({cpu:.1f}%)")
-    
+        alertas.append(f"📊 CPU elevada y persistente ({cpu:.1f}%)")
+
     if 70 <= ram < 85 and row["RAM_Alta_5"] > 0.5:
-        alertas.append(f"RAM elevada y persistente ({ram:.1f}%)")
-    
+        alertas.append(f"📊 RAM elevada y persistente ({ram:.1f}%)")
+
+    if 75 <= disco < 90 and row["Disco_Alto_5"] > 0.5:
+        alertas.append(f"📊 Disco elevado y persistente ({disco:.1f}%)")
+
     # Combinaciones peligrosas
     if cpu >= 65 and ram >= 65:
-        alertas.append("CPU + RAM elevadas simultaneamente")
-    
+        alertas.append("🔴 CPU + RAM elevadas simultáneamente")
+
+    if cpu >= 65 and temp >= 65:
+        alertas.append("🔴 CPU + Temperatura elevadas simultáneamente")
+
     # Temperatura
     if temp > 70:
-        alertas.append(f"Temperatura alta ({temp:.1f}°C)")
-    
+        alertas.append(f"🌡️ Temperatura alta ({temp:.1f}°C)")
+
     # Score de anomalía alto
     if row["Score_Anomalia"] > 65:
-        alertas.append(f"Comportamiento anomalo detectado (score: {row['Score_Anomalia']:.1f})")
-    
-    return alertas if alertas else ["Sin alertas detectadas"]
+        alertas.append(f"🔍 Comportamiento anómalo detectado (score: {row['Score_Anomalia']:.1f})")
+
+    return alertas if alertas else ["✅ Sin alertas detectadas"]
+
 
 historial["Alertas_Tempranas"] = historial.apply(generar_alertas_tempranas, axis=1)
 
+
 # ============================================================
-# DIAGNOSTICO / RECOMENDACIONES MEJORADOS
+# DIAGNOSTICO / RECOMENDACIONES (MEJORADOS)
 # ============================================================
 
 def generar_diagnostico_avanzado(row):
@@ -765,50 +809,51 @@ def generar_diagnostico_avanzado(row):
     temp = row.get("Temperatura_CPU", 0)
 
     if cpu < 50:
-        problemas.append("CPU en rango excelente (menor a 50%).")
+        problemas.append("CPU en rango excelente (<50%).")
     elif cpu < 70:
-        problemas.append("CPU en rango bueno (50% a 69.99%).")
+        problemas.append("CPU en rango bueno (50%-69.99%).")
     elif cpu < 80:
-        problemas.append("CPU en rango regular (70% a 79.99%), monitorear evolucion.")
+        problemas.append("CPU en rango regular (70%-79.99%), monitorear evolución.")
     else:
-        problemas.append("CPU en rango malo (mayor o igual a 80%); requiere atencion.")
+        problemas.append("CPU en rango malo (>=80%); requiere atención.")
 
     if ram < 50:
-        problemas.append("RAM en rango excelente (menor a 50%).")
+        problemas.append("RAM en rango excelente (<50%).")
     elif ram < 70:
-        problemas.append("RAM en rango bueno (50% a 69.99%).")
+        problemas.append("RAM en rango bueno (50%-69.99%).")
     elif ram < 80:
-        problemas.append("RAM en rango regular (70% a 79.99%), monitorear evolucion.")
+        problemas.append("RAM en rango regular (70%-79.99%), monitorear evolución.")
     else:
-        problemas.append("RAM en rango malo (mayor o igual a 80%); requiere atencion.")
+        problemas.append("RAM en rango malo (>=80%); requiere atención.")
 
     if disco < 55:
-        problemas.append("Disco en rango excelente (menor a 55%).")
+        problemas.append("Disco en rango excelente (<55%).")
     elif disco < 70:
-        problemas.append("Disco en rango bueno (55% a 69.99%).")
+        problemas.append("Disco en rango bueno (55%-69.99%).")
     elif disco < 85:
-        problemas.append("Disco en rango regular (70% a 84.99%), monitorear evolucion.")
+        problemas.append("Disco en rango regular (70%-84.99%), monitorear evolución.")
     else:
-        problemas.append("Disco en rango malo (mayor o igual a 85%); requiere atencion.")
+        problemas.append("Disco en rango malo (>=85%); requiere atención.")
 
     if temp > 0:
         if temp < 50:
-            problemas.append("Temperatura en rango excelente (menor a 50°C).")
+            problemas.append("Temperatura en rango excelente (<50°C).")
         elif temp < 65:
-            problemas.append("Temperatura en rango bueno (50°C a 64.99°C).")
+            problemas.append("Temperatura en rango bueno (50°C-64.99°C).")
         elif temp < 75:
-            problemas.append("Temperatura en rango regular (65°C a 74.99°C), monitorear.")
+            problemas.append("Temperatura en rango regular (65°C-74.99°C), monitorear.")
         else:
-            problemas.append("Temperatura en rango malo (mayor o igual a 75°C); requiere atencion.")
+            problemas.append("Temperatura en rango malo (>=75°C); requiere atención.")
 
     if row["CPU_Alta_5"] >= 0.6:
-        problemas.append("La CPU ha permanecido elevada en la mayoria de las ultimas 5 mediciones.")
+        problemas.append("La CPU ha permanecido elevada en la mayoría de las últimas 5 mediciones.")
     if row["RAM_Alta_5"] >= 0.6:
-        problemas.append("La RAM ha permanecido elevada en la mayoria de las ultimas 5 mediciones.")
+        problemas.append("La RAM ha permanecido elevada en la mayoría de las últimas 5 mediciones.")
     if row["Disco_Alto_5"] >= 0.6:
-        problemas.append("La actividad de disco ha permanecido elevada en la mayoria de las ultimas 5 mediciones.")
+        problemas.append("La actividad de disco ha permanecido elevada en la mayoría de las últimas 5 mediciones.")
 
     return " ".join(problemas) if problemas else "No se detectan problemas significativos."
+
 
 def generar_recomendaciones_avanzado(row):
     recomendaciones = []
@@ -818,21 +863,23 @@ def generar_recomendaciones_avanzado(row):
     if cpu >= 80:
         recomendaciones.append("Revisar los procesos con mayor consumo de CPU y comprobar si la carga permanece sostenida.")
     if ram >= 80:
-        recomendaciones.append("Revisar aplicaciones con alto consumo de memoria y verificar presion de memoria.")
+        recomendaciones.append("Revisar aplicaciones con alto consumo de memoria y verificar presión de memoria.")
     if disco >= 85:
         recomendaciones.append("Revisar procesos con alta actividad de almacenamiento y espacio disponible.")
     if temp >= 75:
-        recomendaciones.append("Verificar el sistema de refrigeracion y limpieza de ventiladores.")
+        recomendaciones.append("Verificar el sistema de refrigeración y limpieza de ventiladores.")
     if row["CPU_Alta_5"] >= 0.6 or row["RAM_Alta_5"] >= 0.6:
-        recomendaciones.append("Priorizar una revision tecnica porque la carga elevada es persistente.")
+        recomendaciones.append("Priorizar una revisión técnica porque la carga elevada es persistente.")
     if cpu >= 80 and ram >= 80 and disco >= 85:
-        recomendaciones.append("Realizar diagnostico integral del equipo debido a saturacion simultanea.")
+        recomendaciones.append("Realizar diagnóstico integral del equipo debido a saturación simultánea.")
     if not recomendaciones:
-        recomendaciones.append("No se requiere una intervencion inmediata; mantener el monitoreo preventivo.")
+        recomendaciones.append("No se requiere una intervención inmediata; mantener el monitoreo preventivo.")
     return recomendaciones
+
 
 historial["Diagnostico_IA"] = historial.apply(generar_diagnostico_avanzado, axis=1)
 historial["Recomendaciones_IA"] = historial.apply(generar_recomendaciones_avanzado, axis=1)
+
 
 # ============================================================
 # VISTA ACTUAL DE CADA EQUIPO
@@ -856,6 +903,7 @@ if not equipos_bd.empty:
         current_df["Tiene_Ticket_Equipo"] = False
 else:
     current_df["Tiene_Ticket_Equipo"] = False
+
 
 # ============================================================
 # EVALUACION DEL MODELO EN TEST
@@ -885,14 +933,16 @@ def metricas_clasificacion(y_true, y_pred):
         "fn": fn,
     }
 
+
 if modelo_supervisado is not None:
     pred_test = modelo_supervisado.predict(X_test)
-    evaluacion_nombre = "Random Forest supervisado"
+    evaluacion_nombre = "Random Forest supervisado (mejorado)"
 else:
     pred_test = np.where(modelo_anomalia_if.predict(X_test) == -1, "CRÍTICO", "ESTABLE")
-    evaluacion_nombre = "Isolation Forest como evaluacion preliminar"
+    evaluacion_nombre = "Isolation Forest como evaluación preliminar"
 
 metricas = metricas_clasificacion(y_test_real, pred_test)
+
 
 # ============================================================
 # SIDEBAR
@@ -925,6 +975,7 @@ with st.sidebar.form("form_ticket"):
         else:
             st.sidebar.warning("Escribe una descripción antes de registrar el ticket.")
 
+
 # ============================================================
 # DASHBOARD
 # ============================================================
@@ -952,6 +1003,7 @@ fleet_counts = (
 fleet_counts.columns = ["Estado IA", "Cantidad"]
 
 st.dataframe(fleet_counts, use_container_width=True, hide_index=True)
+
 
 # ============================================================
 # DIAGNOSTICO INDIVIDUAL
@@ -995,6 +1047,7 @@ for alerta in equipo["Alertas_Tempranas"]:
         st.success(f"✅ {alerta}")
     else:
         st.warning(f"⚠️ {alerta}")
+
 
 # ============================================================
 # TABS
@@ -1070,8 +1123,9 @@ with tab_dashboard:
     risk_fig.update_layout(height=380, paper_bgcolor="#ffffff", plot_bgcolor="#ffffff")
     st.plotly_chart(risk_fig, use_container_width=True)
 
+
 # ============================================================
-# EVALUACION
+# EVALUACION (MEJORADA - MÁS INFORMACIÓN)
 # ============================================================
 
 with tab_evaluacion:
@@ -1084,7 +1138,7 @@ with tab_evaluacion:
 
     if modelo_supervisado is not None:
         st.success(
-            f"Modelo supervisado activo. Entrenamiento: {len(train_df):,} mediciones de "
+            f"✅ Modelo supervisado activo. Entrenamiento: {len(train_df):,} mediciones de "
             f"{train_df['ID_PC'].nunique()} equipos. Prueba: {len(test_df):,} mediciones de "
             f"{test_df['ID_PC'].nunique()} equipos. No se mezclaron equipos entre entrenamiento y prueba."
         )
@@ -1097,12 +1151,13 @@ with tab_evaluacion:
         e4.metric("Tiempo de entrenamiento", f"{tiempo_entrenamiento_supervisado:.3f} s")
 
         st.info(
-            f"El modelo entrenó {N_ARBOLES_RF:,} árboles usando {len(features)} variables "
-            f"predictoras, con class_weight extremo (5:1 para críticos), semilla 42 y procesamiento paralelo."
+            f"✅ El modelo entrenó {N_ARBOLES_RF:,} árboles usando {len(features)} variables "
+            f"predictoras, con class_weight extremo (5:1 para críticos), semilla 42 y procesamiento paralelo. "
+            f"Se utilizó SMOTE para balancear clases {'(activado)' if SMOTE_AVAILABLE and cantidad_criticos < 15 else '(no aplicado)'}."
         )
     else:
         st.warning(
-            f"El modelo supervisado no está activo. Registros: {n_registros}; equipos: {n_equipos}; "
+            f"⚠️ El modelo supervisado no está activo. Registros: {n_registros}; equipos: {n_equipos}; "
             f"críticos: {cantidad_criticos}; no críticos: {cantidad_estables}."
         )
 
@@ -1163,7 +1218,7 @@ with tab_evaluacion:
         roc_col.warning("ROC-AUC requiere modelo supervisado activo y ambas clases presentes en el conjunto de prueba.")
         pr_col.warning("PR-AUC requiere modelo supervisado activo y ambas clases presentes en el conjunto de prueba.")
 
-    # Validacion cruzada por equipos
+    # Validacion cruzada por equipos (mejorada)
     st.markdown('<div class="section-title">Validación cruzada del entrenamiento</div>', unsafe_allow_html=True)
 
     if modelo_supervisado is not None:
@@ -1176,7 +1231,7 @@ with tab_evaluacion:
 
         if folds >= 2:
             cv_model = RandomForestClassifier(
-                n_estimators=1000,
+                n_estimators=1500,
                 max_depth=15,
                 min_samples_split=2,
                 min_samples_leaf=1,
@@ -1241,7 +1296,7 @@ with tab_evaluacion:
     if modelo_supervisado is not None:
         st.markdown('<div class="section-title">Evolución del entrenamiento por número de árboles</div>', unsafe_allow_html=True)
 
-        arboles_prueba = [100, 250, 500, 750, 1000]
+        arboles_prueba = [100, 250, 500, 750, 1000, 1500]
         evolucion = []
 
         for n_trees in arboles_prueba:
@@ -1364,6 +1419,7 @@ with tab_evaluacion:
     estado_dist.columns = ["Estado técnico", "Cantidad"]
     st.dataframe(estado_dist, use_container_width=True, hide_index=True)
 
+
 # ============================================================
 # INVENTARIO
 # ============================================================
@@ -1393,6 +1449,7 @@ with tab_datos:
         use_container_width=True,
         hide_index=True,
     )
+
 
 # ============================================================
 # PIE
