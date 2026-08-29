@@ -756,7 +756,7 @@ def generar_alertas_tempranas(row):
 historial["Alertas_Tempranas"] = historial.apply(generar_alertas_tempranas, axis=1)
 
 # ============================================================
-# DIAGNOSTICO / RECOMENDACIONES
+# DIAGNOSTICO / RECOMENDACIONES MEJORADOS
 # ============================================================
 
 def generar_diagnostico_avanzado(row):
@@ -782,5 +782,5 @@ def generar_diagnostico_avanzado(row):
     else:
         problemas.append("RAM en rango malo (>=80%); requiere atención.")
 
-    if disco >= 95:
-        problemas.append("Actividad de disco muy alta (>=95
+    if disco < 55:
+        problemas.append("Disco en rango excelente (<
