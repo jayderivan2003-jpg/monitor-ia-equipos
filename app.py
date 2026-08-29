@@ -37,7 +37,6 @@ try:
     SMOTE_AVAILABLE = True
 except ImportError:
     SMOTE_AVAILABLE = False
-    st.warning("⚠️ imbalanced-learn no instalado. Instálalo con: pip install imbalanced-learn")
 
 # ============================================================
 # CONFIGURACION
@@ -295,7 +294,7 @@ historial["Estado_Tecnico"] = (
     .replace({"CRÍTICO": "CRITICO"})
 )
 
-# Objetivo binario para las metricas
+# Objetivo binario
 historial["Clase_Real"] = np.where(
     historial["Estado_Tecnico"].eq("CRITICO"),
     "CRÍTICO",
@@ -303,7 +302,7 @@ historial["Clase_Real"] = np.where(
 )
 
 # ============================================================
-# VARIABLES DERIVADAS E HISTORICAS
+# VARIABLES DERIVADAS E HISTORICAS (MEJORADAS)
 # ============================================================
 
 historial = historial.sort_values(["ID_PC", "Fecha_Hora"], na_position="first").copy()
@@ -330,9 +329,10 @@ historial["Diferencia_CPU"] = (
     historial["CPU_Normalizado_Porcentaje"] - historial["Uso_CPU_Porcentaje"]
 ).abs()
 
-historial["CPU_Mala"] = (historial["Uso_CPU_Porcentaje"] >= 80).astype(int)  # Más sensible
-historial["RAM_Mala"] = (historial["Uso_RAM_Porcentaje"] >= 80).astype(int)   # Más sensible
-historial["Disco_Malo"] = (historial["Uso_Disco_Porcentaje"] >= 85).astype(int) # Más sensible
+# Umbrales MÁS SENSIBLES (80% en lugar de 85%)
+historial["CPU_Mala"] = (historial["Uso_CPU_Porcentaje"] >= 80).astype(int)
+historial["RAM_Mala"] = (historial["Uso_RAM_Porcentaje"] >= 80).astype(int)
+historial["Disco_Malo"] = (historial["Uso_Disco_Porcentaje"] >= 85).astype(int)
 historial["Recursos_Malos"] = historial[["CPU_Mala", "RAM_Mala", "Disco_Malo"]].sum(axis=1)
 
 historial["Estado_CPU_Tecnico"] = pd.cut(
@@ -375,7 +375,7 @@ historial["Componentes_Saturados"] = (
 )
 
 # ============================================================
-# FEATURES (ampliados)
+# FEATURES
 # ============================================================
 
 features = [
@@ -492,7 +492,6 @@ N_ARBOLES_RF = 1000
 # ============================================================
 
 proporcion_criticos = cantidad_criticos / max(n_registros, 1)
-# Aumentar contamination para detectar más anomalías
 CONTAMINATION = float(np.clip(max(0.10, proporcion_criticos * 1.5), 0.05, 0.35))
 
 modelo_anomalia_if = IsolationForest(
@@ -525,23 +524,21 @@ if puede_usar_supervisado and train_df["Clase_Real"].nunique() == 2:
     X_train_rf = X_train.copy()
     y_train_rf = y_train.copy()
     
-    # Aplicar SMOTE si hay pocos críticos
     if cantidad_criticos < 15 and SMOTE_AVAILABLE:
         try:
             k_neighbors = min(3, cantidad_criticos - 1)
             if k_neighbors >= 1:
                 smote = SMOTE(random_state=42, k_neighbors=k_neighbors)
                 X_train_rf, y_train_rf = smote.fit_resample(X_train, y_train)
-                st.info(f"✅ SMOTE aplicado: {len(X_train_rf)} muestras balanceadas")
-        except Exception as e:
-            st.warning(f"⚠️ No se pudo aplicar SMOTE: {e}")
+        except Exception:
+            pass
     
     modelo_supervisado = RandomForestClassifier(
         n_estimators=N_ARBOLES_RF,
         max_depth=15,
         min_samples_split=2,
         min_samples_leaf=1,
-        class_weight={'CRÍTICO': 5, 'ESTABLE': 1},  # Peso extremo a críticos
+        class_weight={'CRÍTICO': 5, 'ESTABLE': 1},
         random_state=42,
         n_jobs=-1,
         min_impurity_decrease=0.0001,
@@ -576,8 +573,6 @@ else:
 anomaly_score_lof = np.clip(anomaly_score_lof, 0, 100)
 
 # Combinar scores (ensamble)
-historial["Score_Anomalia_IF"] = anomaly_score_if
-historial["Score_Anomalia_LOF"] = anomaly_score_lof
 historial["Score_Anomalia"] = (0.6 * anomaly_score_if + 0.4 * anomaly_score_lof)
 
 # ============================================================
@@ -656,7 +651,7 @@ def calcular_score_tecnico_avanzado(row):
     # Persistencia
     score += min(10, int(round(persistencia * 10)))
     
-    # BONIFICACIÓN POR MÚLTIPLES PROBLEMAS (sinergia)
+    # BONIFICACIÓN POR MÚLTIPLES PROBLEMAS
     problemas = 0
     if cpu >= 70: problemas += 1
     if ram >= 70: problemas += 1
@@ -676,7 +671,6 @@ historial["Score_Tecnico"] = historial.apply(calcular_score_tecnico_avanzado, ax
 # RIESGO IA FINAL CON PESOS AJUSTADOS
 # ============================================================
 
-# Factor de confianza: si hay pocos datos, menos peso a supervisado
 confianza_supervisado = min(1.0, cantidad_criticos / 30)
 
 if modelo_supervisado is not None:
@@ -731,32 +725,23 @@ def generar_alertas_tempranas(row):
     disco = row["Uso_Disco_Porcentaje"]
     temp = row.get("Temperatura_CPU", 0)
     
-    # Tendencias al alza (problemas futuros)
+    # Tendencias al alza
     if row["Tendencia_CPU"] > 10:
         alertas.append(f"⚠️ CPU subiendo rápidamente (+{row['Tendencia_CPU']:.1f}%)")
     
     if row["Tendencia_RAM"] > 10:
         alertas.append(f"⚠️ RAM subiendo rápidamente (+{row['Tendencia_RAM']:.1f}%)")
     
-    if row["Tendencia_Disco"] > 10:
-        alertas.append(f"⚠️ Disco subiendo rápidamente (+{row['Tendencia_Disco']:.1f}%)")
-    
-    # Niveles elevados PERSISTENTES (problema crónico)
+    # Niveles elevados PERSISTENTES
     if 70 <= cpu < 85 and row["CPU_Alta_5"] > 0.5:
         alertas.append(f"📊 CPU elevada y persistente ({cpu:.1f}%)")
     
     if 70 <= ram < 85 and row["RAM_Alta_5"] > 0.5:
         alertas.append(f"📊 RAM elevada y persistente ({ram:.1f}%)")
     
-    if 75 <= disco < 90 and row["Disco_Alto_5"] > 0.5:
-        alertas.append(f"📊 Disco elevado y persistente ({disco:.1f}%)")
-    
     # Combinaciones peligrosas
     if cpu >= 65 and ram >= 65:
         alertas.append("🔴 CPU + RAM elevadas simultáneamente")
-    
-    if cpu >= 65 and temp >= 65:
-        alertas.append("🔴 CPU + Temperatura elevadas simultáneamente")
     
     # Temperatura
     if temp > 70:
@@ -771,4 +756,31 @@ def generar_alertas_tempranas(row):
 historial["Alertas_Tempranas"] = historial.apply(generar_alertas_tempranas, axis=1)
 
 # ============================================================
-# DIAGNOSTICO / RECOMENDACIONES (mejor
+# DIAGNOSTICO / RECOMENDACIONES
+# ============================================================
+
+def generar_diagnostico_avanzado(row):
+    problemas = []
+    cpu, ram, disco = row["Uso_CPU_Porcentaje"], row["Uso_RAM_Porcentaje"], row["Uso_Disco_Porcentaje"]
+    temp = row.get("Temperatura_CPU", 0)
+
+    if cpu < 50:
+        problemas.append("CPU en rango excelente (<50%).")
+    elif cpu < 70:
+        problemas.append("CPU en rango bueno (50%-69.99%).")
+    elif cpu < 80:
+        problemas.append("CPU en rango regular (70%-79.99%), monitorear evolución.")
+    else:
+        problemas.append("CPU en rango malo (>=80%); requiere atención.")
+
+    if ram < 50:
+        problemas.append("RAM en rango excelente (<50%).")
+    elif ram < 70:
+        problemas.append("RAM en rango bueno (50%-69.99%).")
+    elif ram < 80:
+        problemas.append("RAM en rango regular (70%-79.99%), monitorear evolución.")
+    else:
+        problemas.append("RAM en rango malo (>=80%); requiere atención.")
+
+    if disco >= 95:
+        problemas.append("Actividad de disco muy alta (>=95
