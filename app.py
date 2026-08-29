@@ -727,10 +727,10 @@ def generar_alertas_tempranas(row):
     
     # Tendencias al alza
     if row["Tendencia_CPU"] > 10:
-        alertas.append(f"CPU subiendo rápidamente (+{row['Tendencia_CPU']:.1f}%)")
+        alertas.append(f"CPU subiendo rapidamente (+{row['Tendencia_CPU']:.1f}%)")
     
     if row["Tendencia_RAM"] > 10:
-        alertas.append(f"RAM subiendo rápidamente (+{row['Tendencia_RAM']:.1f}%)")
+        alertas.append(f"RAM subiendo rapidamente (+{row['Tendencia_RAM']:.1f}%)")
     
     # Niveles elevados PERSISTENTES
     if 70 <= cpu < 85 and row["CPU_Alta_5"] > 0.5:
@@ -741,7 +741,7 @@ def generar_alertas_tempranas(row):
     
     # Combinaciones peligrosas
     if cpu >= 65 and ram >= 65:
-        alertas.append("CPU + RAM elevadas simultáneamente")
+        alertas.append("CPU + RAM elevadas simultaneamente")
     
     # Temperatura
     if temp > 70:
@@ -749,7 +749,7 @@ def generar_alertas_tempranas(row):
     
     # Score de anomalía alto
     if row["Score_Anomalia"] > 65:
-        alertas.append(f"Comportamiento anómalo detectado (score: {row['Score_Anomalia']:.1f})")
+        alertas.append(f"Comportamiento anomalo detectado (score: {row['Score_Anomalia']:.1f})")
     
     return alertas if alertas else ["Sin alertas detectadas"]
 
@@ -769,15 +769,18 @@ def generar_diagnostico_avanzado(row):
     elif cpu < 70:
         problemas.append("CPU en rango bueno (50% a 69.99%).")
     elif cpu < 80:
-        problemas.append("CPU en rango regular (70% a 79.99%), monitorear evolución.")
+        problemas.append("CPU en rango regular (70% a 79.99%), monitorear evolucion.")
     else:
-        problemas.append("CPU en rango malo (mayor o igual a 80%); requiere atención.")
+        problemas.append("CPU en rango malo (mayor o igual a 80%); requiere atencion.")
 
     if ram < 50:
         problemas.append("RAM en rango excelente (menor a 50%).")
     elif ram < 70:
         problemas.append("RAM en rango bueno (50% a 69.99%).")
     elif ram < 80:
-        problemas.append("RAM en rango regular (70% a 79.99%), monitorear evolución.")
+        problemas.append("RAM en rango regular (70% a 79.99%), monitorear evolucion.")
     else:
-        problemas.append("RAM en rango malo (mayor o igual a 80
+        problemas.append("RAM en rango malo (mayor o igual a 80%); requiere atencion.")
+
+    if disco < 55:
+       
